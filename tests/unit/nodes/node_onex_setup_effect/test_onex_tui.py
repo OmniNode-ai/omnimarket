@@ -176,7 +176,10 @@ def test_command_tree_picks_up_a_command_added_later() -> None:
         _models.commands.pop("benchmark")
 
 
-def test_command_tree_of_the_real_onex_has_the_setup_and_models_commands() -> None:
+def test_command_tree_of_the_real_onex_has_the_setup_and_models_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ONEX_CLI_SHOW_ALL_COMMANDS", "1")
     from omnibase_core.cli.cli_commands import cli
 
     paths = {entry.path for entry in command_tree(cli)}

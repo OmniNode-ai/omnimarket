@@ -147,6 +147,7 @@ def test_exported_profile_is_accepted_by_setup_without_apply(tmp_path: Path) -> 
             + os.pathsep
             + os.environ.get("PATH", "/usr/bin:/bin"),
             "ONEX_STATE_DIR": str(tmp_path / "state"),
+            "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
         },
         capture_output=True,
         text=True,

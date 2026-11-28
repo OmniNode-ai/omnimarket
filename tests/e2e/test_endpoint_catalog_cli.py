@@ -52,6 +52,7 @@ def test_installed_models_discover_reads_server_catalog(tmp_path: Path) -> None:
             ],
             env={
                 "HOME": str(home),
+                "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
                 "PATH": "/usr/bin:/bin",
                 "ONEX_STATE_DIR": str(home / "state"),
             },

@@ -11,6 +11,11 @@ requirements:
   acceptance:
   - id: AC7
     statement: 'AC7: the node refuses an ask for an object the owner file declares as a bare name under a domain, and lets an ask for an undeclared object go on -- falsifier: uv run pytest tests/nodes/node_cross_owner_ask_check_compute -q -n 0 --no-cov exits non-zero'
+- id: req-omn26471-pinned-topology
+  statement: The pinned omnibase_infra topology resolves omninode_cloud for omnimarket in every topology profile.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: the pinned topology resolves omninode_cloud for omnimarket after the release and pin raise -- falsifier: on that pin `uv run pytest tests/unit/runtime/test_topology_strict_wiring_omn15655.py -q` fails on T3''s or T7''s branch, or the PR adds a residual row'
 evidence_requirements:
 - kind: tests
   description: The cross-owner ask check tests pass at the pushed head.
@@ -46,4 +51,13 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cross_owner_ask_check_compute/handlers/handler_cross_owner_ask_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerCrossOwnerAskCheck" >/dev/null'
+    cwd: .
+- id: dod-omn26471-omnimarket-ac6-pinned-topology
+  description: 'AC6: on the raised omnibase_infra and omnibase_core pins every topology profile resolves omninode_cloud with the tenant_identity_writer binding on TENANT_IDENTITY_DATABASE_DSN, and the strict-wiring topology test passes; the new test file is absent and the pin lower at the merge base, so the control fails there.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/runtime/test_omninode_cloud_topology_pin_omn26471.py tests/unit/runtime/test_topology_strict_wiring_omn15655.py -q
     cwd: .

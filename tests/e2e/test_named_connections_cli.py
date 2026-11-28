@@ -101,6 +101,9 @@ def test_named_connection_commands_from_installed_cli(
         "HOME": str(home),
         "PATH": "/usr/bin:/bin",
         "ONEX_STATE_DIR": str(tmp_path / "state"),
+        # Core lists `models` on the operator surface only; the customer
+        # surface hides it until the switch is on.
+        "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
     }
     command = [str(Path(sys.executable).parent / "onex"), "models"]
 
