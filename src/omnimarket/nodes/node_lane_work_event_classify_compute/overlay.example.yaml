@@ -26,9 +26,8 @@ rules:
     red_kind: file_shape_ratchet
     source: ci_job_log
   - pattern: '^refused node_[a-z0-9_]+: node_[a-z0-9_]+ requires the overlay '
-    event: log_read
+    event: overlay_pr_needed
     ignore_case: false
-    red_kind: overlay_required
   - pattern: '^refused node_[a-z0-9_]+ document_invalid: '
     event: log_read
     ignore_case: false

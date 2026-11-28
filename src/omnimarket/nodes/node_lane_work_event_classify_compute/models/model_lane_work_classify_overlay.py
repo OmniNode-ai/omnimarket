@@ -20,6 +20,7 @@ TEXT_EVENTS = frozenset(
     {
         EnumLaneWorkEvent.HEAD_MOVED,
         EnumLaneWorkEvent.LOG_READ,
+        EnumLaneWorkEvent.OVERLAY_PR_NEEDED,
         EnumLaneWorkEvent.CAUSE_FOUND,
         EnumLaneWorkEvent.CAUSE_UNKNOWN,
         EnumLaneWorkEvent.FIX_COMMITTED,

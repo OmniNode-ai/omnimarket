@@ -419,15 +419,12 @@ state_machine:
       - - five_whys_owed
         - 'false'
   - version: {major: 1, minor: 0, patch: 0}
-    transition_name: red_to_help_requested_on_log_read_overlay_required
+    transition_name: red_to_help_requested_on_overlay_pr_needed
     from_state: red
     to_state: help_requested
-    trigger: log_read
+    trigger: overlay_pr_needed
     priority: 5
     conditions:
-    - condition_name: red_kind_overlay_required
-      condition_type: expression
-      expression: red_kind == overlay_required
     - condition_name: help_budget_left
       condition_type: expression
       expression: help_budget_left == true
@@ -442,15 +439,11 @@ state_machine:
       - - tier
         - first
   - version: {major: 1, minor: 0, patch: 0}
-    transition_name: red_to_blocked_on_log_read_overlay_required_help_exhausted
+    transition_name: red_to_blocked_on_overlay_pr_needed_help_exhausted
     from_state: red
     to_state: blocked
-    trigger: log_read
+    trigger: overlay_pr_needed
     priority: 4
-    conditions:
-    - condition_name: red_kind_overlay_required
-      condition_type: expression
-      expression: red_kind == overlay_required
     actions:
     - action_name: terminal
       action_type: terminal

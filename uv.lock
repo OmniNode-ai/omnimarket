@@ -10,7 +10,7 @@ resolution-markers = [
 
 [manifest]
 overrides = [
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261126163618-6baa5af6b65d" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=653fbb7040e82d3f74643baecf3a414a4ea6e437" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261124065450-0ecba67c8fee" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
 ]
@@ -3053,8 +3053,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.47.82.dev1+g6baa5af6"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261126163618-6baa5af6b65d#6baa5af6b65d998683df0a5a1250ac2b30d3a12d" }
+version = "0.47.82.dev2+g653fbb70"
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=653fbb7040e82d3f74643baecf3a414a4ea6e437#653fbb7040e82d3f74643baecf3a414a4ea6e437" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -3219,7 +3219,7 @@ requires-dist = [
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261126163618-6baa5af6b65d" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=653fbb7040e82d3f74643baecf3a414a4ea6e437" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261124065450-0ecba67c8fee" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261120144838-db14a337f1ab" },

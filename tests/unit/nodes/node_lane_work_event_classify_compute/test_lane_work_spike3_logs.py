@@ -105,9 +105,7 @@ def read(raw: str, overlay: dict[str, Any] | None = None) -> Any:
     [
         ("6308", "foreign_repo_verdict"),
         ("6573", "file_shape_ratchet"),
-        ("6700", "overlay_required"),
         ("6802", "overlay_required"),
-        ("7030-overlay", "overlay_required"),
         ("7030-dod", "dod_verify_step_failed"),
     ],
 )
@@ -116,6 +114,14 @@ def test_each_real_red_log_is_a_log_read_of_a_named_kind(
 ) -> None:
     event = read(log(change))
     assert (event.kind, event.red_kind) == (E.LOG_READ, red_kind)
+
+
+@pytest.mark.parametrize("change", ["6700", "7030-overlay"])
+def test_a_requires_the_overlay_refusal_is_overlay_pr_needed(change: str) -> None:
+    event = read(log(change))
+    assert event.kind is E.OVERLAY_PR_NEEDED
+    assert event.red_kind is None
+    assert any("requires the overlay" in line for line in event.evidence)
 
 
 def test_the_dod_verify_failure_is_named_from_the_evidence_line_not_unclassified() -> (
@@ -152,7 +158,7 @@ def test_rules_match_lines_with_their_timestamps_stripped(change: str) -> None:
     assert not STAMP.search(bare)
     as_logged = read(log(change))
     event = read(bare)
-    assert as_logged.kind is E.LOG_READ
+    assert as_logged.kind in (E.LOG_READ, E.OVERLAY_PR_NEEDED)
     assert (event.kind, event.red_kind) == (as_logged.kind, as_logged.red_kind)
 
 

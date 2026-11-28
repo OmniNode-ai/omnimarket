@@ -47,6 +47,18 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_lane_work_event_classify_compute/test_lane_work_spike3_logs.py -m unit -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26698-overlay-pr-needed-event"
+    description: >-
+      The overlay_pr_needed event kind (core enum value, pinned by revision) is named by the classifier from the
+      recorded #7030 and #6700 overlay refusal logs and routes from red to help_requested in the reducer, with a
+      blocked edge when help is exhausted; the #6802 document_invalid refusal stays a log_read and goes to
+      diagnosing. A known bad (the previous contract and overlay) fails eight of these tests.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_spike3_replay.py tests/unit/nodes/node_lane_work_reducer/test_transitions.py -m unit -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26698-integration-proof"
     description: >-
       Run the reducer and classifier tests, including the spike 3 replay of the recorded #6573 and #7030 job logs,

@@ -90,12 +90,35 @@ def test_6573_file_shape_ratchet_routes_to_fixing_not_diagnosing() -> None:
     assert _replay("6573") == ("log_read", "file_shape_ratchet", "fixing")
 
 
-def test_7030_overlay_refusal_routes_to_help_not_diagnosing() -> None:
-    assert _replay("7030-overlay") == (
-        "log_read",
-        "overlay_required",
-        "help_requested",
+def test_7030_overlay_refusal_is_overlay_pr_needed_and_routes_to_help() -> None:
+    assert _replay("7030-overlay") == ("overlay_pr_needed", "None", "help_requested")
+
+
+def test_6802_document_invalid_stays_a_log_read_and_goes_to_diagnosing() -> None:
+    # The refusal names a model field the change must carry, not an overlay-store pull request.
+    state = ModelLaneWorkState(
+        workflow_id="replay-1",
+        change=ModelLaneWorkChange(
+            owner="OmniNode-ai", repo="omnimarket", pr_number=1, ticket="OMN-26043"
+        ),
+        state=EnumLaneWorkState.RED,
+        seq=4,
+        expected_head=HEAD,
+        worker_lane="red-1",
     )
+    event = _classifier().classify(
+        raw_result=(
+            FIXTURES / "omnimarket_6802_overlay_main_load_job_140182703055.txt"
+        ).read_text(),
+        state=state,
+    )
+    assert event is not None
+    assert (event.kind.value, event.red_kind) == ("log_read", "overlay_required")
+    driver = Driver("red")
+    result = driver.handler.reduce(
+        driver.state, event, "2026-11-28T02:00:00Z", driver.config
+    )
+    assert result.state.name == "diagnosing"
 
 
 def test_7030_dod_verify_is_classified_and_goes_to_diagnosing() -> None:
@@ -116,7 +139,8 @@ def test_the_overlay_help_request_names_the_remedy_and_the_origin() -> None:
         ),
     )
     assert event is not None
-    assert event.kind is EnumLaneWorkEvent.LOG_READ
+    assert event.kind is EnumLaneWorkEvent.OVERLAY_PR_NEEDED
+    assert any("requires the overlay" in line for line in event.evidence)
     result = driver.handler.reduce(
         driver.state, event, "2026-11-28T02:00:00Z", driver.config
     )
