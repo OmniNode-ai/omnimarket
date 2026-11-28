@@ -66,6 +66,13 @@ def _palette(app: OnexTui) -> list[str]:
     return [str(option.prompt).split()[0] for option in options]
 
 
+def test_banner_tip_does_not_promise_every_command() -> None:
+    """C1: the welcome banner must not say 'every command' when only nine are listed."""
+    slash_tips = [t for t in tui_design().banner.tips if t.key == "/"]
+    assert slash_tips, "no banner tip with key '/'"
+    assert "every command" not in slash_tips[0].text
+
+
 async def test_slash_lists_exactly_the_nine_customer_commands_in_order() -> None:
     """C1, AC1."""
     app = _app(_Runner([]))
@@ -74,10 +81,22 @@ async def test_slash_lists_exactly_the_nine_customer_commands_in_order() -> None
         assert _palette(app) == _CUSTOMER
 
 
-def test_the_customer_list_is_declared_once_in_tui_design_yaml() -> None:
+def test_the_customer_list_is_declared_once_in_tui_design_yaml(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """C1, AC1: the list is data in the design file, not a list in code."""
+    from omnimarket.nodes.node_onex_setup_effect import cli_tui
+
     declared = ["/" + " ".join(path) for path in tui_design().customer_commands]
     assert declared == _CUSTOMER
+
+    patched = tui_design().model_copy(
+        update={"customer_commands": (("config",), ("quit",))}
+    )
+    monkeypatch.setattr(cli_tui, "tui_design", lambda: patched)
+    assert cli_tui._is_customer_command(("config",))
+    assert cli_tui._is_customer_command(("config", "init"))
+    assert not cli_tui._is_customer_command(("delegation",))
 
 
 async def test_a_typed_hidden_command_runs_nothing_and_says_so() -> None:
@@ -144,7 +163,7 @@ async def test_doctor_and_metering_run_and_show_their_output(name: str) -> None:
 
 @pytest.mark.parametrize(
     "typed",
-    ["/delegation on", "/delegation off", "/model set"],
+    ["/delegation on", "/delegation off", "/config init"],
 )
 async def test_typed_subcommands_of_a_customer_command_still_run(typed: str) -> None:
     """C2, AC2: the sentence is for commands outside the nine, not for their subcommands."""
@@ -155,3 +174,5 @@ async def test_typed_subcommands_of_a_customer_command_still_run(typed: str) -> 
         await pilot.press("enter")
         await pilot.pause()
         assert "Not a TUI command" not in _log_text(app)
+        assert _commands(runner) == [tuple(typed.lstrip("/").split())]
+        assert "subcommand ran" in _log_text(app)
