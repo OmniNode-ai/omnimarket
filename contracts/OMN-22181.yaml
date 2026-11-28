@@ -1,0 +1,44 @@
+schema_version: 1.0.0
+ticket_id: OMN-22181
+title: The guide's recommended VM passes the onex setup preflight with the walk's 17 GB free
+summary: >-
+  The 2026-11-02 clean macOS VM walk measured 17 GB free on the guide's 4 vCPU, 8 GB, 40 GB VM from the stock
+  image, and the retired onboarding script refused it with "17 GB free disk (needs 20)". onex setup's
+  preflight has no blanket free-disk floor. A regression test replays the walk's recorded machine, saved as
+  tests/fixtures/onboarding_walk_2026_11_02/disk_preflight.json, against HandlerSetupPreflight, so a blanket
+  floor cannot come back unnoticed. AC1 to AC3 are not in this contract.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22181-walk-regression
+    statement: The walk's recorded machine passes the onex setup preflight.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4: a regression test built from the incident's recorded data (the 17 GB reading and the VM figures,
+          saved as a fixture under tests/fixtures/onboarding_walk_2026_11_02/) fails on the broken code and
+          passes on the fix -- falsifier: uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect -q -n 0
+          -p no:randomly --no-cov -k walk_2026_11_02
+evidence_requirements:
+  - kind: tests
+    description: The walk regression and the rest of the onex setup unit tests.
+    command: >-
+      uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22181-ac4
+    description: >-
+      AC4 is the walk regression. At the merge base the test file is absent, so the check fails there only for
+      that reason; the behavioural red is a temporary 20 GB free-disk check in HandlerSetupPreflight, under
+      which the test fails, recorded in the pull request.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect -q -n 0 -p no:randomly --no-cov -k walk_2026_11_02
+        cwd: "${OMNI_HOME}/omnimarket"

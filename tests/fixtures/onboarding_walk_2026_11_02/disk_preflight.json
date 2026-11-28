@@ -1,0 +1,15 @@
+{
+  "captured_at": "2026-11-02",
+  "source": "clean macOS VM onboarding walk (Tart VM from the stock ghcr.io/cirruslabs/macos-tahoe-vanilla image, 4 CPU, 8 GB, 40 GB disk, macOS 26.6.2); retired lab-onboarding.sh pinned at ee8797af, run with --preflight-only at 21:02:25Z",
+  "platform": "Darwin",
+  "architecture": "arm64",
+  "macos_version": "26.6.2",
+  "virtual_machine": true,
+  "cpus": 4,
+  "ram_gib": 8,
+  "disk_total_gib": 41,
+  "disk_free_gib": 17,
+  "retired_refusal": "17 GB free disk (needs 20)",
+  "retired_exit_code": 3,
+  "local_path_reached": "the local-model path ran to the end of phase 2 with 17 GB free"
+}
