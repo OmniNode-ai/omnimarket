@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Cloud Smoke Check Effect
+#
+# Runs one delegation end to end through a gateway whose URL and key come from settings, then reads the receipt back and
+# passes only when it names the model that answered. A run with no settings fails with a named outcome before any request.
+name: node_cloud_smoke_check_effect
+contract_name: node_cloud_smoke_check_effect
+node_name: node_cloud_smoke_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Smoke check for a hosted gateway install. Reads the gateway URL from ONEX_API_BASE_URL and the key from the owner-only
+  file ONEX_API_KEY_FILE names (the two settings onex cloud reads; neither has a default), submits one delegation to
+  /v1/workflows, waits for it to end, reads its receipt and passes when the receipt names the answering model. Every
+  failure is a typed outcome (settings_absent, key_file_refused, gateway_unreachable, gateway_unavailable, auth_refused,
+  submit_refused, run_failed, run_timed_out, receipt_unreadable, receipt_names_no_model). The key is never logged or returned.
+
+handler:
+  module: omnimarket.nodes.node_cloud_smoke_check_effect.handlers.handler_cloud_smoke_check
+  class: HandlerCloudSmokeCheck
+  input_model: omnimarket.nodes.node_cloud_smoke_check_effect.models.model_cloud_smoke_check.ModelCloudSmokeCommand
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: false
+  side_effects: [gateway-delegation-submit]
+  timeout_ms: 180000
+
+input_model:
+  name: ModelCloudSmokeCommand
+  module: omnimarket.nodes.node_cloud_smoke_check_effect.models.model_cloud_smoke_check
+  description: The prompt, task type and time budget of one smoke delegation; the gateway and key come from settings.
+output_model:
+  name: ModelCloudSmokeResult
+  module: omnimarket.nodes.node_cloud_smoke_check_effect.models.model_cloud_smoke_check
+  description: The outcome, a reason, the workflow id and the answering model; never the key.
+
+runtime_dispatch:
+  external_trigger: An operator runs the node once after an install; nothing on the bus starts it.
+  on_demand:
+    command: uv run onex node node_cloud_smoke_check_effect --input <command.json> --output receipt
+    owner: OmniNode Platform Team
+
+# No topics by design: the check is an operator-invoked action that talks to a gateway over HTTP.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  ticket: OMN-26711
+  transport_type: inmemory

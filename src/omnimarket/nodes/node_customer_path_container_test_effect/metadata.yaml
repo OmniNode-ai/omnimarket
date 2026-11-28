@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_customer_path_container_test_effect
+version: 1.0.0
+description: Runs the customer path in a clean container with the lab network blocked, following only the public guide, delegates one task through the cloud smoke check and reads the receipt back; every step is reported passed, failed or not run.
+pack: operator_tooling
+node_role: effect
+display_name: Customer Path Container Test Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_customer_path_container_test_effect: omnimarket.nodes.node_customer_path_container_test_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: true
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- container
+- gateway

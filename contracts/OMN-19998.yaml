@@ -266,6 +266,11 @@ requirements:
     acceptance:
       - id: AC134
         statement: 'AC134: the accepted bindings of OMN-22621 AC1 and OMN-22623 AC2 use check_type test_passes, every repo contract binds every criterion, and no command check hides a pytest run behind uv run --frozen -- falsifier: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k "every_repo_contract_binds_every_criterion or hides_a_pytest_run or accepted_pytest_bindings"'
+  - id: req-omn19998-lab-agent-local-rung
+    statement: The lab-agent harness runs the local least-busy model through the plain local rung instead of returning launch_failed.
+    acceptance:
+      - id: AC135
+        statement: 'AC135: a lab-agent backend with a bound local rung answers through it with the local model named on the receipt, and with none bound still returns launch_failed; the local rung adapter takes the local tier pick from the routing authority and runs the local dispatch port pinned to it -- falsifier: uv run --frozen pytest tests/unit/delegation/test_harness_lab_agent_local_rung.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
@@ -1013,4 +1018,13 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k "every_repo_contract_binds_every_criterion or hides_a_pytest_run or accepted_pytest_bindings"
+        cwd: .
+
+  - id: dod-omn19998-lab-agent-local-rung
+    description: The lab-agent harness runner answers through the bound local rung with the local model named on the receipt; without a bound rung it still returns launch_failed. The scoped proof uses a stand-in rung and the adapter over a stand-in port; the live delegation is on the pull request's Lab line.
+    source: manual
+    binds_ac: [AC135]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/delegation/test_harness_lab_agent_local_rung.py -q --no-cov -n 0 -p no:randomly
         cwd: .

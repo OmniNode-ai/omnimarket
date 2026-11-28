@@ -35,6 +35,11 @@ requirements:
   acceptance:
   - id: AC8
     statement: 'AC8: the host table keys ingest node applies each overlay snapshot record to the injected settings store through its handler, an older replayed record never moves a value back, and a record with no revision is skipped and counted -- falsifier: uv run --frozen pytest tests/settings_store/test_snapshot_writer.py -q -n 0 --no-cov -p no:cacheprovider fails when the handler module is absent or applies an older record over a newer one'
+- id: req-omn24028-host-table-from-store
+  statement: The board lab_hosts reader reads the host table through the injected settings store only, and a host table that cannot be read is unknown, never an empty list.
+  acceptance:
+  - id: AC9
+    statement: 'AC9: the board lab_hosts reader reads the host table through the injected settings store and returns unknown (None), never an empty list, for an absent overlay, a stale heartbeat, an unreachable store and a document that is not a host table -- falsifier: uv run --frozen pytest tests/settings_store/test_host_table_from_store.py -q -n 0 --no-cov -p no:cacheprovider fails when the reader function is absent or returns an empty list for any of those cases'
 evidence_requirements:
 - kind: tests
   description: The projection key tests and the overlay store golden and error chain tests pass at the pushed head.
@@ -121,4 +126,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/settings_store/test_snapshot_writer.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24028-host-table-from-store
+  description: 'Task 20: the board lab_hosts reader reads the host table through the injected settings store only; an absent overlay, a stale heartbeat, an unreachable store and a non-table document read unknown, never an empty list, and the reader module names no implementation and no environment variable'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_host_table_from_store.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .

@@ -12,7 +12,6 @@ from omnimarket.models.overlay_store.model_overlay_store import (
     ModelOverlayCompare,
     ModelOverlayDocumentRead,
     ModelOverlayReadPolicy,
-    ModelOverlaySettingRecord,
     ModelOverlaySnapshotStamp,
     ModelOverlayStoreDrift,
     ModelOverlayStoreLoadBatch,
@@ -25,18 +24,29 @@ from omnimarket.models.overlay_store.model_overlay_store import (
     ModelOverlayStoreRefusal,
     document_digest,
 )
+from omnimarket.models.overlay_store.model_overlay_store_write import (
+    EnumOverlayValueSource,
+    EnumOverlayWriteOutcome,
+    ModelOverlayPathProvenance,
+    ModelOverlaySettingAudit,
+    ModelOverlayStoreWrite,
+    ModelOverlayWriteReply,
+)
 
 __all__ = [
     "EnumOverlayReadSource",
     "EnumOverlayReadState",
+    "EnumOverlayValueSource",
+    "EnumOverlayWriteOutcome",
     "ModelOverlayAssertion",
     "ModelOverlayAssertionCheck",
     "ModelOverlayAssertionCheckResult",
     "ModelOverlayAssertionStaleAlarm",
     "ModelOverlayCompare",
     "ModelOverlayDocumentRead",
+    "ModelOverlayPathProvenance",
     "ModelOverlayReadPolicy",
-    "ModelOverlaySettingRecord",
+    "ModelOverlaySettingAudit",
     "ModelOverlaySnapshotStamp",
     "ModelOverlayStoreDrift",
     "ModelOverlayStoreLoadBatch",
@@ -47,5 +57,7 @@ __all__ = [
     "ModelOverlayStoreReading",
     "ModelOverlayStoreRecord",
     "ModelOverlayStoreRefusal",
+    "ModelOverlayStoreWrite",
+    "ModelOverlayWriteReply",
     "document_digest",
 ]
