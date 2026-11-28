@@ -101,7 +101,7 @@ async def _apply_until_new(conn: asyncpg.Connection) -> None:
         for migration in sorted(
             (_NODES / node / "migrations").glob("*.sql"), key=lambda p: p.name
         ):
-            if migration.name == _NEW.name:
+            if migration.name >= _NEW.name:
                 continue
             try:
                 await conn.execute(_prepared(migration))

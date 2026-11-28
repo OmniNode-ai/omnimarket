@@ -40,6 +40,19 @@ db_io:
       migration: src/omnimarket/nodes/node_delegate_skill_orchestrator/migrations/0001_delegate_skill_command_claims.sql
       access: read_write
       role: delegate_skill_claim
+    # OMN-26444: the pricing manifest's models, which the shared savings view
+    # joins to count a run unpriced by the metering refresh's rule. Migration
+    # 102 creates it and the metering writer refills it. It is declared here,
+    # not in a node contract: a node contract's db_tables entry is resolved
+    # against the topology grants omnibase_infra derives from the contract set
+    # it pins, so it would fail the writer's auto-wiring until that pin carries
+    # the relation.
+    - name: savings_priced_models
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_savings/migrations/102_delegation_savings_unpriced_matches_refresh.sql
+      access: read_write
+      role: savings_priced_models
     - name: delegation_events
       database_ref: application
       schema: public

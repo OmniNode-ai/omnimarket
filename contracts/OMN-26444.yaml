@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-26444
+title: 'The shared Postgres savings view counts unpriced runs by a different rule and over different runs than the local view and the shared metering refresh'
+summary: 'The shared savings view counted a run unpriced when its stored cost was NULL, over every row with a tenant, while the shared metering refresh counts unknown spend only for real runs (not fixture or experiment), not returned to the caller, with tokens, whose cost has no named price. Migration 102 changes only the view''s unpriced flag to the refresh''s rule, reading the pricing manifest''s models from a new savings_priced_models table; every served column keeps its name, type and position.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26444-shared-unpriced-matches-refresh
+  statement: On a shared Postgres store, the savings view's unpriced_call_count equals the shared metering refresh's runs_unknown_spend for the same tenant.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: on a real Postgres seeded with the OMN-26413 cases, the shared savings view''s unpriced_call_count equals the shared metering summary''s runs_unknown_spend for the same tenant -- falsifier: a real-Postgres pytest written before the fix that fails on dev unless the two agree'
+evidence_requirements:
+- kind: tests
+  description: The shared savings unpriced test passes at the pushed head on a real Postgres.
+  command: uv run pytest tests/test_omn26444_shared_savings_unpriced_matches_refresh_real_postgres.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26444-ac1
+  description: 'AC1: the whole shared savings unpriced test file, 12 cases, one tenant per case. It fails on omnimarket dev (8 failed, 4 passed at the test-only head) and passes with migration 102.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn26444_shared_savings_unpriced_matches_refresh_real_postgres.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn26444-integration-proof
+  description: the real-Postgres test runs on a lab host at the pushed head; hosted CI may hold no Postgres for this integration test, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26444 --kind test -- uv run --frozen pytest tests/test_omn26444_shared_savings_unpriced_matches_refresh_real_postgres.py -q --no-cov
+    cwd: .

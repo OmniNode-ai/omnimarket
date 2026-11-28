@@ -101,8 +101,9 @@ async def views(postgres_fixture: asyncpg.Connection) -> Any:
         await _call(conn, "unpriced-only", ALL_UNPRICED, None, "no_cost_model")
         await _call(conn, "priced-only", ALL_PRICED, Decimal("0.1"), "metered")
         await _call(conn, "free-local", ALL_PRICED, Decimal(0), "free_local")
-        # An unpriced call that a savings estimate does price is not unpriced
-        # on this page: the estimate's cost is the one the view serves.
+        # An unpriced call that a savings estimate also prices: the estimate's cost is
+        # the one the view serves, but the call has no named price, so the shared
+        # refresh counts it unknown spend and the view counts it too (OMN-26444).
         await _call(conn, "estimated", ESTIMATED, None, "no_cost_model")
         await conn.execute(
             """
@@ -133,7 +134,10 @@ async def test_a_mixed_tenant_counts_the_unpriced_call_and_keeps_its_totals(
     views: asyncpg.Connection,
 ) -> None:
     row = await _row(views, MIXED)
-    assert row["unpriced_call_count"] == 1
+    # OMN-26444 (migration 102): the view counts unpriced by the shared refresh's
+    # rule, a cost with no named price; _call's model qwen is not in the pricing
+    # manifest, so the 0.25 run is unpriced too, beside the NULL one.
+    assert row["unpriced_call_count"] == 2
     assert row["session_count"] == 2
     assert row["cumulative_local_cost_usd"] == pytest.approx(0.25)
     assert row["cumulative_cloud_cost_usd"] == pytest.approx(0.75)
@@ -154,16 +158,21 @@ async def test_priced_calls_and_a_measured_free_call_count_none(
     views: asyncpg.Connection,
 ) -> None:
     row = await _row(views, ALL_PRICED)
-    assert row["unpriced_call_count"] == 0
+    # OMN-26444 (migration 102): qwen is not in the pricing manifest, so by the
+    # shared refresh's named-price rule both the 0.1 run and the free_local 0 run
+    # have no named price and are unpriced.
+    assert row["unpriced_call_count"] == 2
     assert row["cumulative_local_cost_usd"] == pytest.approx(0.1)
 
 
-async def test_a_call_a_savings_estimate_prices_is_not_counted(
+async def test_a_call_a_savings_estimate_prices_is_still_counted_unpriced(
     views: asyncpg.Connection,
 ) -> None:
     row = await _row(views, ESTIMATED)
     assert row["cumulative_local_cost_usd"] == pytest.approx(0.03)
-    assert row["unpriced_call_count"] == 0
+    # OMN-26444 (migration 102): the count follows the shared refresh's rule, which
+    # has no carve-out for a run that has a saving; 101 excluded it and counted 0.
+    assert row["unpriced_call_count"] == 1
 
 
 async def test_the_count_is_appended_and_the_view_still_reads_as_its_invoker(
