@@ -552,7 +552,15 @@ _HERMETIC_ENV_FAILURE_MARKER = "HERMETIC_ENV_UNAVAILABLE:"
 # Anything else (``gh api ...``, ``grep``, ``./verify.sh``) is unaffected, so
 # the blast radius of this routing is exactly the commands that resolve a uv
 # project environment.
-_UV_INVOCATION_RE = re.compile(r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)uv\s", re.MULTILINE)
+# OMN-26725: ``uv`` may sit behind an ``env`` prefix (``env -u OMNI_HOME uv run``,
+# ``env NAME=value uv run``) or bare ``NAME=value`` assignments. Those commands
+# resolve the same project environment, and on the runtime, where every product
+# clone is mounted read-only, skipping the hermetic environment made uv try to
+# rebuild ``.venv`` inside the clone and fail the item.
+_UV_ENV_PREFIX = r"(?:env\s+(?:(?:-u\s+\S+|-\S+|\w+=\S*)\s+)*|(?:\w+=\S*\s+)+)?"
+_UV_INVOCATION_RE = re.compile(
+    r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)" + _UV_ENV_PREFIX + r"uv\s", re.MULTILINE
+)
 
 
 def _hermetic_sync_timeout_s() -> float:

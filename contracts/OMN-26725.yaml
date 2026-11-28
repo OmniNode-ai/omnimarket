@@ -68,3 +68,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_lab_work_unit_effect/test_env_prefix_omn26725.py -q -n 0 --no-cov"
         cwd: "."
+  - id: "dod-omn26725-env-prefixed-uv-check-hermetic"
+    description: "A behaviour check whose command is uv behind an env prefix (env -u NAME uv run, env NAME=value uv run, NAME=value uv run) is routed into the verifier's hermetic environment, so on the runtime, where product clones are read-only, it no longer tries to rebuild .venv inside the clone; the six prefixed cases fail on origin/dev and a non-uv command stays unrouted."
+    source: "manual"
+    binds_ac: ["AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_26725_env_prefixed_uv_check_is_hermetic.py -q -n 0 --no-cov -p no:cacheprovider"
+        cwd: "."
