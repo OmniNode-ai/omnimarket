@@ -5,12 +5,7 @@ summary: This pull request adds node_cross_owner_ask_check_compute, which checks
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
-requirements:
-- id: req-omn26471-cross-owner-ask-check
-  statement: A request to another owner about that owner's repository is refused when that owner's file already holds the object.
-  acceptance:
-  - id: AC7
-    statement: 'AC7: the node refuses an ask for an object the owner file declares as a bare name under a domain, and lets an ask for an undeclared object go on -- falsifier: uv run pytest tests/nodes/node_cross_owner_ask_check_compute -q -n 0 --no-cov exits non-zero'
+requirements: []
 evidence_requirements:
 - kind: tests
   description: The cross-owner ask check tests pass at the pushed head.
@@ -47,3 +42,17 @@ dod_evidence:
   - check_type: command
     check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cross_owner_ask_check_compute/handlers/handler_cross_owner_ask_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerCrossOwnerAskCheck" >/dev/null'
     cwd: .
+- id: dod-omn26471-retired-label-pinned
+  description: The contract retires AC7, which was deleted from the live ticket, through supersedes_ac_binding; the retired items keep running their checks and this item binds no criterion the ticket carries.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_contract_retired_label_omn26471.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+  supersedes_ac_binding:
+  - item: dod-omn26471-ac7-cross-owner-ask-check
+    label: AC7
+    reason_kind: no_longer_applicable
+    reason: AC7 was deleted from the live OMN-26471 ticket (read 2026-11-28 by q-donesweep2-164500), which carries AC1 to AC6; this repository's contract declared it for the cross-owner ask check. Its check keeps running under its own item.
+    retired_by: q-close26471x-181500h
+    retired_at: '2026-11-28T14:45:00Z'
