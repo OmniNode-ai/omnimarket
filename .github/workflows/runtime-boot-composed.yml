@@ -849,6 +849,43 @@ jobs:
           done
           echo "dev-lane class: both kernels healthy, running, zero restarts"
 
+      # The boot check: the same composed main kernel, recreated under the limits the dev declarations give it,
+      # with a stack sampler loaded into it. It reads every bound and every limit from the node's contract and
+      # from the infra checkout's declarations, and is red when a call holds the event loop over the loop-hold
+      # bound (the sampler names the call) or when /health does not answer within the health bound. It reuses this
+      # job's scratch broker and database and their sizing above, and adds no second job.
+      - name: Boot check -- render the dev limits and the stack sampler into a compose override
+        run: |
+          set -euo pipefail
+          existing="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "${LOCAL_PROJECT}-omninode-runtime" | sed -n 's/^PYTHONPATH=//p' | head -n 1)"
+          BOOT_CHECK_OVERRIDE="${RUNNER_TEMP}/boot-check.override.yml"
+          BOOT_CHECK_SAMPLER_OUT=/tmp/boot-check-loop-holds.jsonl
+          PYTHONPATH=market/src uv run --no-project --python 3.12 --with 'pydantic>=2' --with 'pyyaml>=6.0.2' \
+            python -m omnimarket.nodes.node_composed_boot_loop_hold_check.runtime_composed_boot_check render-override \
+            --infra-root infra --out "$BOOT_CHECK_OVERRIDE" --service omninode-runtime \
+            --sampler-out "$BOOT_CHECK_SAMPLER_OUT" --existing-pythonpath "$existing"
+          echo "BOOT_CHECK_OVERRIDE=${BOOT_CHECK_OVERRIDE}" >> "${GITHUB_ENV:-/dev/null}"
+          echo "BOOT_CHECK_SAMPLER_OUT=${BOOT_CHECK_SAMPLER_OUT}" >> "${GITHUB_ENV:-/dev/null}"
+          cat "$BOOT_CHECK_OVERRIDE"
+
+      - name: Boot check -- recreate the main kernel under those limits
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          docker compose -p omnibase-infra-local --project-directory "$GITHUB_WORKSPACE/infra/docker" \
+            --env-file "$LOCAL_ENV_FILE" --env-file infra/docker/runtime-policy.env \
+            -f "$COMPOSED_FILES" -f "$DEV_LANE_CLASS_OVERRIDE" -f "$BOOT_CHECK_OVERRIDE" \
+            up -d --no-deps --force-recreate --no-build omninode-runtime
+
+      - name: Boot check -- no call holds the event loop over the bound and /health answers within its bound
+        run: |
+          set -euo pipefail
+          PYTHONPATH=market/src uv run --no-project --python 3.12 --with 'pydantic>=2' --with 'pyyaml>=6.0.2' \
+            python -m omnimarket.nodes.node_composed_boot_loop_hold_check.runtime_composed_boot_check check \
+            --infra-root infra --container "${LOCAL_PROJECT}-omninode-runtime" \
+            --health-url http://localhost:8085/health --sampler-out "$BOOT_CHECK_SAMPLER_OUT"
+
       - name: Container state and log tail (always)
         if: always()
         run: |

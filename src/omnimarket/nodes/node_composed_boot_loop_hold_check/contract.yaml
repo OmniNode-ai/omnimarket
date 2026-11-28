@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Composed Boot Loop Hold Check
+name: node_composed_boot_loop_hold_check
+contract_name: node_composed_boot_loop_hold_check
+node_name: node_composed_boot_loop_hold_check
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >-
+  The composed-runtime boot check. One boot of the real kernel under the dev limits comes in as an observation (the
+  /health probe answers and the event-loop holds a stack sampler recorded) with the declared bounds, and a verdict comes
+  out: red when any single call held the event loop over the loop-hold bound (the finding names the call the sampler saw)
+  or when no /health probe was answered within the health bound after the container start. The node's command line renders
+  the compose override that applies the declared limits and loads the sampler into the kernel services, and runs the
+  probe and the verdict against a booted container.
+input_model:
+  name: ModelBootCheckRequest
+  module: omnimarket.nodes.node_composed_boot_loop_hold_check.models.model_boot_check_request
+output_model:
+  name: ModelBootCheckResult
+  module: omnimarket.nodes.node_composed_boot_loop_hold_check.models.model_boot_check_result
+handler:
+  module: omnimarket.nodes.node_composed_boot_loop_hold_check.handlers.handler_boot_check
+  class: HandlerBootCheck
+  input_model: omnimarket.nodes.node_composed_boot_loop_hold_check.models.model_boot_check_request.ModelBootCheckRequest
+  output_model: omnimarket.nodes.node_composed_boot_loop_hold_check.models.model_boot_check_result.ModelBootCheckResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_composed_boot_loop_hold_check.handlers.handler_boot_check:HandlerBootCheck
+  handlers:
+    - operation: check_composed_boot
+      topic: onex.cmd.omnimarket.composed-boot-check-requested.v1
+      handler:
+        name: HandlerBootCheck
+        module: omnimarket.nodes.node_composed_boot_loop_hold_check.handlers.handler_boot_check
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+terminal_event: onex.evt.omnimarket.composed-boot-check-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.composed-boot-check-requested.v1
+topics:
+  composed_boot_check_requested: onex.cmd.omnimarket.composed-boot-check-requested.v1
+  composed_boot_check_completed: onex.evt.omnimarket.composed-boot-check-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.composed-boot-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.composed-boot-check-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.composed-boot-check-completed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.composed-boot-check-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.composed-boot-check-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.composed-boot-check-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.composed-boot-check-completed.v1, operation: DESCRIBE}
+# The declared bounds and the places the dev limits are read from. Nothing in code holds a bound, a limit or a path.
+boot_check:
+  # A call that holds the event loop over this fails the check.
+  loop_hold_bound_seconds: 1.0
+  # The first /health answer, a 503 included, must arrive within this many seconds of the container start. The dev
+  # healthcheck allows a start period of 1800 s before it counts a failure; a kernel that has not answered once in two
+  # minutes had no loop to answer with. The check prints the measured first answer so the bound can be tightened from it.
+  health_bound_seconds: 120.0
+  probe_timeout_seconds: 5.0
+  probe_interval_seconds: 1.0
+  # The window in which holds are collected ends when the kernel reports healthy and running, or after the dev runtime's
+  # own ready bound, read from the runtime policy contract.
+  observe_window_source:
+    file: contracts/services/runtime_policy.contract.yaml
+    key_path: [profiles, dev, services, main, boot, ready_bound_seconds]
+  # Paths below are relative to the infra checkout the composed-runtime workflow holds.
+  limit_sources:
+    memory_limit:
+      file: contracts/services/runtime_policy.contract.yaml
+      key_path: [profiles, dev, services, main, boot, memory_limit]
+    # The base CPU cap every runtime service inherits. The dev lane overlay raises its main runtime above this cap; the
+    # check runs at the base cap because the stall it guards against was measured at one CPU.
+    cpus:
+      file: docker/docker-compose.infra.yml
+      key_path: [x-runtime-base, deploy, resources, limits, cpus]
+metadata:
+  transport_type: inmemory
+  description: Composed-runtime boot check with a loop-hold bound and a health bound
+  author: OmniNode Team
+  created: "2026-11-21"
+  ticket: OMN-26336
