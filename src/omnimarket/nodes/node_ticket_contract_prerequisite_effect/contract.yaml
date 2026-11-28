@@ -57,5 +57,8 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: pre-push and CI invoke the local node module in the target worktree
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_ticket_contract_prerequisite_effect --head <sha> --title <title>, run by pre-push and CI
+    owner: OmniNode Platform Team
 metadata:
   transport_type: local
