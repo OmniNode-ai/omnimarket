@@ -453,6 +453,7 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         # `latest_projection_updated_at` from its first commit.
         "node_projection_delegation::delegation_events#2",
         "node_projection_delegation::projection_delegation_daily#12",
+        "node_projection_delegation::projection_delegation_quality_weekly#13",
         # OMN-25104: done_items declares `cursor_column: ticket`, its primary
         # key, from its first commit.
         "node_projection_done_items::done_items#0",
@@ -501,7 +502,11 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # 86 as of OMN-25103: floor_integration_rows declares `cursor_column: key`, its
 # primary key, in the same change as the exposure, so the measured backlog is
 # unmoved.
-_AC3_TOTAL_EXPOSURES = 86
+# OMN-26623: delegation.quality-weekly.v1 declares cursor_column
+# latest_projection_updated_at in its first commit, so it joins
+# the DECLARED side and never enters the baseline;
+# the measured gap is unchanged at 54.
+_AC3_TOTAL_EXPOSURES = 87
 _AC3_MEASURED_GAP = 54
 
 

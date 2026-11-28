@@ -1036,7 +1036,9 @@ class TestOmn15800ExposureParity:
         # 86 after OMN-25103: onex.snapshot.projection.floor-integration-rows.v1,
         # the newest integration pass behind the dashboard's Running figure,
         # bus-backed with its writer in the same change.
-        assert len(topic_map) == 86
+        # 87 after OMN-26623: onex.snapshot.projection.delegation.quality-weekly.v1, one
+        # row per tenant of weekly delegation-quality cells, bus-backed with its writer.
+        assert len(topic_map) == 87
         assert "onex.snapshot.projection.done-items.v1" in topic_map
         assert "onex.snapshot.projection.floor-integration-rows.v1" in topic_map
         for liveness_topic in (

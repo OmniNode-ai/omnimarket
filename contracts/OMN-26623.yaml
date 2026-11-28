@@ -1,30 +1,66 @@
 schema_version: 1.0.0
 ticket_id: OMN-26623
-title: The weekly delegation-quality view is owned in the ownership manifest
-summary: Ownership declaration of projection_delegation_quality_weekly in scripts/application-relation-ownership.yaml, landed ahead of omnimarket#6943 because omnibase_infra#6315 needs it on dev first. This change proves AC5 only; AC1 to AC4 are proven by omnimarket#6943 and omnidash.
+title: 'The local onex dashboard shows delegation quality each week by task type and model: first-try pass rate, moves down the chain and ends with Claude'
+summary: 'delegation.quality-weekly.v1 is a new singleton exposure of node_projection_delegation, one row per tenant from the SQLite view projection_delegation_quality_weekly over delegation_events, whose cells list holds every ISO week, task type and first-rung model with runs, first-try passes and moves down the chain, by the definitions Jonah confirmed on the ticket on 2026-11-26: a first-try pass is a first rung of attempt_kind first_try that passed the quality gate with no failure_class in a run whose terminal_ok is true; a run moved down the chain when a later rung''s model differs from the first rung''s, a second rung on the same model being a redraw, and escalation_count is not read. A week with no runs for a task type and model is served with runs 0 and null rates, never 0%. The third figure (ended with Claude) is not built yet: the local store never records returned_to_caller, and that cause is reported on the ticket first. The local store gains the view through a one-time store step.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: req-omn26623-quality-weekly-ownership
-    statement: The ownership manifest declares the owner of projection_delegation_quality_weekly once, so omnibase_infra can vendor the view.
-    acceptance:
-      - id: AC5
-        statement: 'AC5: scripts/application-relation-ownership.yaml in omnimarket declares the owner of projection_delegation_quality_weekly, so omnibase_infra can vendor the view; falsifier: uv run pytest -q tests/contracts/test_omn26623_quality_weekly_ownership_declared.py fails on omnimarket dev, where the entry is absent'
+- id: req-omn26623-delegation-quality-weekly
+  statement: One exposure serves the weekly delegation-quality figures by task type and model.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the three weekly figures are served by one exposure built from the delegation event rows, by task type and model -- falsifier: a pytest test over recorded event rows fails if any figure differs from a direct count of the same rows'
+  - id: AC2
+    statement: 'AC2: a week with no runs for a task type or model shows "no runs", never 0% -- falsifier: a pytest test with an empty week fails if a rate of 0% is served'
+- id: req-omn26623-quality-weekly-ownership
+  statement: The ownership manifest declares the owner of projection_delegation_quality_weekly once, so omnibase_infra can vendor the view.
+  acceptance:
+    - id: AC5
+      statement: 'AC5: scripts/application-relation-ownership.yaml in omnimarket declares the owner of projection_delegation_quality_weekly, so omnibase_infra can vendor the view; falsifier: uv run pytest -q tests/contracts/test_omn26623_quality_weekly_ownership_declared.py fails on omnimarket dev, where the entry is absent'
 evidence_requirements:
-  - kind: tests
-    description: AC5 ownership declaration test.
-    command: uv run pytest -q --no-cov tests/contracts/test_omn26623_quality_weekly_ownership_declared.py
+- kind: tests
+  description: The delegation-quality weekly tests pass at the pushed head.
+  command: uv run pytest tests/projection/test_omn26623_delegation_quality_weekly.py -q -p no:randomly --no-cov
+- kind: tests
+  description: AC5 ownership declaration test.
+  command: uv run pytest -q --no-cov tests/contracts/test_omn26623_quality_weekly_ownership_declared.py
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-  - id: dod-omn26623-quality-weekly-ownership
-    description: The ownership manifest declares projection_delegation_quality_weekly exactly once as a tenant view owned by the migration runner; fails on dev, where the entry is absent.
-    source: manual
-    binds_ac: [AC5]
-    checks:
-      - check_type: test_passes
-        check_value: uv run pytest -q tests/contracts/test_omn26623_quality_weekly_ownership_declared.py
-        cwd: .
+- id: dod-omn26623-ac1
+  description: 'AC1: 58 rows recorded from a local store over two ISO weeks, served by the real read node, give every figure a direct count of the same rows gives; a redraw on the same model is not a move, and a passing first rung in a run that did not end ok is not a first-try pass.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/projection/test_omn26623_delegation_quality_weekly.py -q -p no:randomly --no-cov -k "each_weekly_figure_equals_a_direct_count or second_rung_on_the_same_model_is_not_a_move or did_not_end_ok_is_not_a_first_try_pass"'
+    cwd: "${OMNI_HOME}/omnimarket"
+- id: dod-omn26623-ac2
+  description: 'AC2: a task type and model with runs in one recorded week and none in the next, and an empty week between two weeks with runs, are served with runs 0 and null rates; no served cell pairs runs with a missing rate.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/projection/test_omn26623_delegation_quality_weekly.py -q -p no:randomly --no-cov -k "week_with_no_runs_serves_no_rate_never_zero or empty_week_between_two_weeks or no_served_cell_pairs_runs_with_a_missing_rate"'
+    cwd: "${OMNI_HOME}/omnimarket"
+- id: dod-omn26623-integration-proof
+  description: 'Local Done gate only, so it binds no criterion here: on a lab host the delegation-quality weekly tests run at the pushed head through onex lab-work, reading the served local-store aggregate over the recorded rows. The tests use no Postgres server.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26623 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/projection/test_omn26623_delegation_quality_weekly.py -q -p no:randomly --no-cov'
+    cwd: .
+- id: dod-omn26623-quality-weekly-ownership
+  description: The ownership manifest declares projection_delegation_quality_weekly exactly once as a tenant view owned by the migration runner; fails on dev, where the entry is absent.
+  source: manual
+  binds_ac: [AC5]
+  checks:
+    - check_type: test_passes
+      check_value: uv run pytest -q tests/contracts/test_omn26623_quality_weekly_ownership_declared.py
+      cwd: .

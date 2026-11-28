@@ -15,6 +15,7 @@ The store's migration runner (SqliteDatabaseAdapter) records and runs the steps.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable, Iterator
 from importlib.resources import files
 
 _PACKAGE = "omnimarket.nodes.node_projection_delegation"
@@ -125,4 +126,43 @@ DELEGATION_VIEW_REPLACE_STEPS: tuple[tuple[str, tuple[str, str], str], ...] = (
         ),
         "counted a tier model's unmeasured cost only over the runs the metering headline classes as priced or unknown spend",
     ),
+    (
+        "omn26623_delegation_quality_weekly_view",
+        (
+            "projection_delegation_quality_weekly",
+            "sqlite/delegation_quality_weekly_view.sql",
+        ),
+        "created the delegation-quality weekly view",
+    ),
 )
+
+# OMN-26623: the weekly delegation-quality view reads these delegation_events columns,
+# so its store step waits until a store has them all
+# (a legacy store opens as before).
+DELEGATION_QUALITY_WEEKLY_STEP = "omn26623_delegation_quality_weekly_view"
+DELEGATION_QUALITY_WEEKLY_COLUMNS = frozenset(
+    {
+        "attempt_history",
+        "terminal_ok",
+        "data_source",
+        "tenant_id",
+        "created_at",
+        "task_type",
+    }
+)
+
+
+def view_replace_steps(
+    existing_columns: Callable[[sqlite3.Connection, str], set[str]],
+    conn: sqlite3.Connection,
+) -> Iterator[tuple[str, tuple[str, str], str]]:
+    """
+    Yields view replace steps, skipping the weekly quality step unless the delegation_events table has all required columns.
+    Reads the existing columns at most once, only when the weekly quality step is reached.
+    """
+    for step, relation, done in DELEGATION_VIEW_REPLACE_STEPS:
+        if step == DELEGATION_QUALITY_WEEKLY_STEP:
+            columns = existing_columns(conn, "delegation_events")
+            if not DELEGATION_QUALITY_WEEKLY_COLUMNS.issubset(columns):
+                continue
+        yield step, relation, done

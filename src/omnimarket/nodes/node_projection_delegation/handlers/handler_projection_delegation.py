@@ -202,6 +202,8 @@ AGGREGATE_READ_RELATIONS: frozenset[str] = frozenset(
         "projection_delegation_token_usage",
         # OMN-21970: the per-day view, read and republished the same way.
         "projection_delegation_daily",
+        # OMN-26623: the weekly delegation-quality view, read and republished the same way.
+        "projection_delegation_quality_weekly",
     }
 )
 

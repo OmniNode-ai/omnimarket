@@ -875,7 +875,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-25103's floor_integration_rows, declared with its CREATE in the same change = 154.
     # +1 for OMN-25103's floor_integration_pass, declared with its CREATE in the same change = 155.
     # +4 for OMN-26635's overlay_store_revision, _write, _provenance and _audit = 159.
-    assert census["source_declared_tables"] == 159
+    # +1 for OMN-26623's projection_delegation_quality_weekly view, declared with its CREATE in the same change = 160.
+    assert census["source_declared_tables"] == 160
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
