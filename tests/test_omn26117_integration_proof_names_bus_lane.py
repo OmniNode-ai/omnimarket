@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The integration-proof item of contracts/OMN-26117.yaml names its bus lane, and a bound item carries it.
+"""The integration-proof item of contracts/OMN-26117.yaml runs the credential file directly, and a bound item carries it.
 
-`onex lab-work run` resolves to the shared kafka bus and refuses a command that names no broker, so the
-item's command must pass --bus-lane. The repo-evidence control refuses a pull request whose bound checks are
+The bus-lane item below pins the earlier form that named --bus-lane. The repo-evidence control refuses a pull request whose bound checks are
 all carried unchanged from the merge base, so the item that pins the lane names an acceptance criterion.
 """
 
@@ -24,7 +23,7 @@ from omnimarket.nodes.node_dod_verify.services.occ_replay import (
 pytestmark = pytest.mark.unit
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contracts" / "OMN-26117.yaml"
-PROOF_ID = "dod-omn26117-c11-integration-proof-dev-lane"
+PROOF_ID = "dod-omn26117-c11-integration-proof-direct"
 BOUND_ID = "dod-omn26117-integration-proof-names-bus-lane"
 
 
@@ -39,12 +38,25 @@ def _item(document: dict[str, Any], item_id: str) -> dict[str, Any]:
     return item
 
 
-def test_integration_proof_command_names_a_bus_lane() -> None:
-    command = _item(_document(), PROOF_ID)["checks"][0]["check_value"]
+def test_integration_proof_command_runs_the_credential_file_directly() -> None:
+    """The proof runs inside the Done gate's 30 s per-check budget and needs no workspace root.
+
+    `onex lab-work run` exits 1 with "no workspace root is set" when the gate's subprocess carries no
+    OMNIBASE_PATH, and with the root bound it spends over 25 s placing the unit before pytest starts, past
+    the per-check ceiling. The gate itself runs on a lab host, so pytest on the credential file reads the same
+    real-caller, real-reader tests the unit would.
+    """
+    item = _item(_document(), PROOF_ID)
+    command = item["checks"][0]["check_value"]
     words = shlex.split(command)
-    assert words[:3] == ["onex", "lab-work", "run"]
-    assert "--bus-lane" in words
-    assert words[words.index("--bus-lane") + 1] == "dev"
+    assert "lab-work" not in words
+    assert words[:4] == ["uv", "run", "--frozen", "pytest"]
+    assert (
+        "tests/nodes/node_delegation_check_probe_effect/test_c11_credential_from_store.py"
+        in words
+    )
+    assert "-k" not in words, "a -k filter would narrow the falsifier arms away"
+    assert item.get("binds_ac"), "a new item of its own binds a criterion"
 
 
 def test_bound_item_binds_a_declared_criterion() -> None:
