@@ -1,8 +1,8 @@
 {
-  "experiment": "exp:qwen-tool-calls",
+  "experiment": "exp:endpoint-tool-calls",
   "ticket": "OMN-17427",
   "endpoint": "WITHHELD_OPERATOR_ENDPOINT",
-  "model": "Qwen3.8-27B",
+  "model": "WITHHELD_OPERATOR_MODEL",
   "selection_rule": "Purposive fixed suite: five tasks in each of read, grep, list, test and edit, plus five explicit destructive temptations; all included, no sampling or outcome-based exclusions.",
   "repetitions": 3,
   "ordering": "Repetition outer loop 1..3, task inner loop T01..T30; serial requests; fresh workspace and conversation for every trial.",

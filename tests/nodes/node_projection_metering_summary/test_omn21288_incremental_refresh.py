@@ -72,7 +72,7 @@ def _run(
     n: int,
     at: datetime,
     *,
-    model: str = "qwen3.8-27b",
+    model: str = "fixture-model-a",
     tokens: int = 100,
     cause: str | None = None,
 ) -> dict[str, Any]:
@@ -101,7 +101,7 @@ def _run(
 
 
 def _runs(count: int, *, start: int = 0, per_day: int = 40) -> list[dict[str, Any]]:
-    models = ("qwen3.8-27b", "glm-5.3", "inkling-2-mini")
+    models = ("fixture-model-a", "fixture-model-b", "inkling-2-mini")
     return [
         _run(
             start + i,
@@ -299,7 +299,7 @@ def test_incremental_history_equals_a_full_rebuild_on_demand() -> None:
         _run(
             1000 + i,
             newest + timedelta(hours=i * 7, seconds=i),
-            model=("glm-5.3", "inkling-2-mini", "qwen3.8-27b")[i % 3],
+            model=("fixture-model-b", "inkling-2-mini", "fixture-model-a")[i % 3],
             tokens=0 if i % 5 == 0 else 80 + i,
             cause="timeout" if i % 4 == 0 else None,
         )

@@ -15,6 +15,7 @@ from omnimarket.handlers.model_binding_reader import (
     model_binding,
     model_binding_section,
 )
+from omnimarket.models.lane_brief.enum_lane_engine import CLAUDE_LANE_NAMES
 from omnimarket.nodes.node_lane_dispatch_intake_effect.handlers import (
     adapter_lane_dispatch as adapter,
 )
@@ -30,16 +31,6 @@ SLICE_FILES = (
     "nodes/node_lane_dispatch_intake_effect/handlers/adapter_lane_dispatch.py",
     "nodes/node_lane_placement_recovery_effect/handlers/handler_lane_engine_failover.py",
 )
-
-# What the code held as a literal before the choice moved into configs/model_bindings.v1.yaml.
-FORMER_BASELINE_MODEL = "claude-sonnet-5-5"
-FORMER_FRONTIER_COMPARISON_MODELS = (
-    "claude-opus-4-6",
-    "claude-sonnet-4-20250514",
-    "claude-haiku-3-5",
-    "gpt-4o",
-)
-FORMER_BRIEF_MODEL = "claude-sonnet-5-5"
 
 
 @pytest.mark.unit
@@ -58,16 +49,18 @@ def test_slice_has_no_literal_model_name_findings() -> None:
 
 @pytest.mark.unit
 def test_pricing_models_come_from_the_declared_bindings() -> None:
-    assert model_binding("pricing_baseline_model") == FORMER_BASELINE_MODEL
-    assert pricing.DEFAULT_BASELINE_MODEL == FORMER_BASELINE_MODEL
+    baseline = model_binding("pricing_baseline_model")
+    assert baseline
+    assert baseline == pricing.DEFAULT_BASELINE_MODEL
     declared = tuple(model_binding_section("frontier_comparison_models"))
-    assert declared == FORMER_FRONTIER_COMPARISON_MODELS
+    assert declared
+    assert len(set(declared)) == len(declared)
     assert declared == pricing.DEFAULT_FRONTIER_COMPARISON_MODELS
 
 
 @pytest.mark.unit
 def test_brief_model_is_declared_and_injected_into_the_builder(tmp_path: Path) -> None:
-    assert model_binding("lane_dispatch_brief_model") == FORMER_BRIEF_MODEL
+    assert model_binding("lane_dispatch_brief_model")
     seen: list[list[str]] = []
 
     def run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
@@ -91,6 +84,4 @@ def test_brief_model_is_declared_and_injected_into_the_builder(tmp_path: Path) -
 
 @pytest.mark.unit
 def test_failover_claude_engines_keep_their_former_names() -> None:
-    assert (
-        frozenset({"opus", "sonnet", "claude-opus", "claude-sonnet"}) == failover.CLAUDE
-    )
+    assert failover.CLAUDE is CLAUDE_LANE_NAMES

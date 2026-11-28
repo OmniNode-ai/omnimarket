@@ -34,7 +34,7 @@
     "causation_id": null,
     "schema_version": "1.0.0",
     "ledger_seq": 421932,
-    "raw_row": "2026-11-23T09:55:59Z | TERMINAL | lane=fixture-lane | principal=fixture | ticket=OMN-1002 | actor=fixture-lane | model=claude-sonnet | friction=none | closes-CLAIM=2026-11-23T09:55:01Z | outcome=done | delegated=0 delegation_reason=no-text-or-code",
+    "raw_row": "2026-11-23T09:55:59Z | TERMINAL | lane=fixture-lane | principal=fixture | ticket=OMN-1002 | actor=fixture-lane | model=fixture-model | friction=none | closes-CLAIM=2026-11-23T09:55:01Z | outcome=done | delegated=0 delegation_reason=no-text-or-code",
     "row_id": "cb0b3a36befef6999713062ec322377e1d0adbeea54799f66ad16dd75d991811",
     "row_timestamp": "2026-11-23T09:55:59Z",
     "hook_fired_at": "2026-11-23T09:56:02.490033+00:00",

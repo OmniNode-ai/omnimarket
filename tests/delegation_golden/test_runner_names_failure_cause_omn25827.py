@@ -100,8 +100,8 @@ class TestAFailedCaseNamesItsRecordedCause:
         row = {
             "correlation_id": "2b70965b-aa34-41c9-8005-c0f07d8e28a2",
             "timestamp": "2026-11-24T07:41:02.000000+00:00",
-            "delegated_to": "Qwen3.8-27B",
-            "model_name": "Qwen3.8-27B",
+            "delegated_to": "fixture-local-model",
+            "model_name": "fixture-local-model",
             "tokens_input": 40,
             "tokens_output": 300,
             "cost_usd": 0.0,

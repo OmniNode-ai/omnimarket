@@ -7,7 +7,7 @@
     {
       "pr": 5375,
       "sha": "0b0c45e11276ab22ac5d8c90a83d50783d73e2c6",
-      "verdicts": {"pull_request:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "68a851d60b58928ded5aba0c4f70a228b3366eadc51c172bc8fe00a5ceef3832"}, "merge_group:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "841638ab982d80b88b10f2eaea407a51c0c9cb3c74fee863acc798b8fc5b8aff"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "4c4394748772104f9d1664be86c669ac0d0b81bf8dc405e1e0d185a6eae73b3a"}},
+      "verdicts": {"pull_request:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "38a9d199ffb4adf5592d5f22d5fd3b275ea72f6650f14ec9c7d19d44a7ccd82b"}, "merge_group:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "a00e1f3ecabacdcfb8e6cdf68593527438fbe916b8cb1a56d7edfcb334629a2a"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "116ac843846d3c69d241cef064401b80573a80c15b4c91c4e452df16d9ccddc7"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:18Z", "started_at": "2026-11-08T02:21:18Z", "id": 128699999001},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:18Z", "started_at": "2026-11-08T02:21:18Z", "id": 128699999101},
@@ -17,6 +17,7 @@
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:54Z", "started_at": "2026-11-08T02:21:54Z", "id": 128601451925},
         {"name": "BYOK Customer Chooses Model (OMN-20844)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:52Z", "started_at": "2026-11-08T02:21:52Z", "id": 128601455552},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:52Z", "started_at": "2026-11-08T02:21:52Z", "id": 128601455553},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:52Z", "started_at": "2026-11-08T02:21:52Z", "id": 128601455560},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:31Z", "started_at": "2026-11-08T02:21:31Z", "id": 128601451885},
         {"name": "CI Summary", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T02:21:22Z", "started_at": "2026-11-08T02:21:22Z", "id": 128601455496},
         {"name": "Canonical File Shape (OMN-20304)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:22:03Z", "started_at": "2026-11-08T02:22:03Z", "id": 128601455627},
@@ -171,7 +172,7 @@
     {
       "pr": 5382,
       "sha": "808536f285661b93bf3604681e0a282d550aa160",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "9cf69572ebbb37d89aec20dc0ad28442f6d7a96d003aa864a0a157e653b67262"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "542dc543c60c6fedf96afb347bcc9d537fe91c0ccffac19668865c1ed93e627a"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "b7d454bff390472a9b5be11ce15b60634835afbfcc4a71af052eae73ac738d40"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "fba053e1c1394884b119c810c11bacb821232f4431e86636672a5dc69fa936dd"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "46f9af11856ec31a4ecd946e314e2dac4bb7d2dd73c3c18bf263b05e9bdc908a"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "767c223d8d8f196fab516b3c7659f4d70cf22387b94d3726cbd83fc5a4e9135b"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:51:48Z", "started_at": "2026-11-08T04:51:48Z", "id": 128699999002},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:51:48Z", "started_at": "2026-11-08T04:51:48Z", "id": 128699999102},
@@ -180,6 +181,7 @@
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:26Z", "started_at": "2026-11-08T04:52:26Z", "id": 128632427857},
         {"name": "BYOK Customer Chooses Model (OMN-20844)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:25Z", "started_at": "2026-11-08T04:53:25Z", "id": 128632596005},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:25Z", "started_at": "2026-11-08T04:53:25Z", "id": 128632596006},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:25Z", "started_at": "2026-11-08T04:53:25Z", "id": 128632596013},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:51:59Z", "started_at": "2026-11-08T04:51:59Z", "id": 128632428090},
         {"name": "CI Summary", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:52:43Z", "started_at": "2026-11-08T04:52:43Z", "id": 128632595858},
         {"name": "Canonical File Shape (OMN-20304)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:33Z", "started_at": "2026-11-08T04:53:33Z", "id": 128632595915},
@@ -280,7 +282,7 @@
     {
       "pr": 5383,
       "sha": "f0ff9238311b32bdc791e7b50cc4ae601507f927",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "cc8614e9b5d915d0618d7f312d264e053e1ac3cd579564afd3fb5a8ca18a4b76"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "230f0387d65c1412f6ec1e0d31d9998dabaf28d1109557ccce6ad9666a6a3bb4"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "57153428b1cff46e8e2e010f1089cc41bc516fd984783d863b81c502dc6a854b"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "88195de9f10e1d9cdcb3cd450788c1167563074b763ed8de1602512f3279076b"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "2445aa8b83b3e11cd51fe9947600dd1adf1bdaaad68d1e8ceab3d1d0c4a8242f"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "9f164adeab0befcbb3ec0144465f984b5d0dfaa50f5f62b81f78ab089b58a40e"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:43Z", "started_at": "2026-11-08T04:45:43Z", "id": 128699999003},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:43Z", "started_at": "2026-11-08T04:45:43Z", "id": 128699999103},
@@ -290,6 +292,7 @@
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:18Z", "started_at": "2026-11-08T04:46:18Z", "id": 128631227380},
         {"name": "BYOK Customer Chooses Model (OMN-20844)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:27Z", "started_at": "2026-11-08T04:46:27Z", "id": 128631229281},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:27Z", "started_at": "2026-11-08T04:46:27Z", "id": 128631229282},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:27Z", "started_at": "2026-11-08T04:46:27Z", "id": 128631229289},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:54Z", "started_at": "2026-11-08T04:45:54Z", "id": 128631227008},
         {"name": "CI Summary", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:45:47Z", "started_at": "2026-11-08T04:45:47Z", "id": 128631229140},
         {"name": "Canonical File Shape (OMN-20304)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:35Z", "started_at": "2026-11-08T04:46:35Z", "id": 128631229192},
@@ -419,7 +422,7 @@
     {
       "pr": 5384,
       "sha": "6a0dde94e04bedeeec651f9a2f152b51e58f2cb7",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "2fefe9a4f955873d5d27d21bc1cc5e37d33eb759ddffc24e64e5e8cef1ffcf93"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "05d8937a609ea79782e022e5c64955a2f366b08166f317fd6ec47aca745625c4"}, "push:dev": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "0d1801d1e0e48e833c5446a8d570c9cc618daa0a7dc8008ea26b3ff2687a3bc4"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "7d78ce88c04627cf6075c99717856eaa900cb034c896e2a0b73b0cf45cf29f53"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "429234c87a4577962b47351db7877416cd4354257855e7a7aa2839006a84d081"}, "push:dev": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "aaa3a9fa4ab96ffadc055b02f71916e8b3a4d2677d578a3e8cc4b3f943b7db39"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:03Z", "started_at": "2026-11-08T04:53:03Z", "id": 128699999004},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:03Z", "started_at": "2026-11-08T04:53:03Z", "id": 128699999104},
@@ -427,6 +430,7 @@
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:26Z", "started_at": "2026-11-08T04:53:26Z", "id": 128632692280},
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:34Z", "started_at": "2026-11-08T04:53:34Z", "id": 128632667593},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:26Z", "started_at": "2026-11-08T04:53:26Z", "id": 128632692281},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:26Z", "started_at": "2026-11-08T04:53:26Z", "id": 128632692288},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:14Z", "started_at": "2026-11-08T04:53:14Z", "id": 128632667080},
         {"name": "Canonical Inference Gate", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:05Z", "started_at": "2026-11-08T04:53:05Z", "id": 128632666931},
         {"name": "CodeQL Security Analysis (python)", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:06Z", "started_at": "2026-11-08T04:53:06Z", "id": 128632667327},
@@ -504,7 +508,7 @@
     {
       "pr": 5385,
       "sha": "bb637ecedd986e136442d0112323b1bce505432a",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "f2bb4f5a803223523b120224e828417d52c26c4b1db265ceba1949b7be1d4fb9"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "af2eab25419e42a4e26a63ee35e47051c4f66349ab83a4149d1a55c12c448f9e"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "4b16e56efea11cd863df7764f319f633b90148e61a0579f389bff89758028348"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "1bc80209fcd448dd542cdba4e5ad187d678b6cc1b7fca57512cc6f2cde6410b3"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "4cabfc0a81d9d34cdc8f6d4daa7a3320d1f9a707e56a99465196c7a1a0e33418"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "bdd3701cbc682cfb1a0f5071f327ccffb747b1f0d0eeb58a808d7447b49cffd1"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:16Z", "started_at": "2026-11-08T04:47:16Z", "id": 128699999005},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:16Z", "started_at": "2026-11-08T04:47:16Z", "id": 128699999105},
@@ -514,6 +518,7 @@
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:55Z", "started_at": "2026-11-08T04:47:55Z", "id": 128631539507},
         {"name": "BYOK Customer Chooses Model (OMN-20844)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:48:46Z", "started_at": "2026-11-08T04:48:46Z", "id": 128631702630},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:48:46Z", "started_at": "2026-11-08T04:48:46Z", "id": 128631702631},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:48:46Z", "started_at": "2026-11-08T04:48:46Z", "id": 128631702638},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:28Z", "started_at": "2026-11-08T04:47:28Z", "id": 128631539779},
         {"name": "CI Summary", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:48:09Z", "started_at": "2026-11-08T04:48:09Z", "id": 128631702622},
         {"name": "Canonical File Shape (OMN-20304)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:48:57Z", "started_at": "2026-11-08T04:48:57Z", "id": 128631702665},
@@ -662,7 +667,7 @@
     {
       "pr": 5386,
       "sha": "afcf58c713b910e950c14d4669b80d46011eeace",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "5db7cc573689933a4bfb51280ccf252dca14ba62bc0164f868e798bd51ee8ca2"}, "merge_group:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "6a95b35dee835c91a426c36f747aac63a673ae9decf8ce0851c820fad4b9a426"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "01e1337d37ec4a98002f6cc2c981121dcb5cd466b8bf5c83fb2977bfc0e43207"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "ae203b67a0ae2c2058b92d659db73b8a6e9359b93dea905f1c66cd5e67309fd5"}, "merge_group:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "fe0fef83af2b1cb11434f9abbec8c33d4780cebad28335fbbe966e86f32fc53a"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "d20427bce69d403e4fdc811f0a1cd72f1f4c89858cb20bb9f12bf558e6d7434a"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:22Z", "started_at": "2026-11-08T03:46:22Z", "id": 128699999006},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:22Z", "started_at": "2026-11-08T03:46:22Z", "id": 128699999106},
@@ -672,6 +677,7 @@
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:47:05Z", "started_at": "2026-11-08T03:47:05Z", "id": 128619272020},
         {"name": "BYOK Customer Chooses Model (OMN-20844)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:47:09Z", "started_at": "2026-11-08T03:47:09Z", "id": 128619274149},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:47:09Z", "started_at": "2026-11-08T03:47:09Z", "id": 128619274150},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:47:09Z", "started_at": "2026-11-08T03:47:09Z", "id": 128619274157},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:35Z", "started_at": "2026-11-08T03:46:35Z", "id": 128619272444},
         {"name": "CI Summary", "status": "completed", "conclusion": "failure", "completed_at": "2026-11-08T03:46:37Z", "started_at": "2026-11-08T03:46:37Z", "id": 128619274097},
         {"name": "Canonical File Shape (OMN-20304)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:47:19Z", "started_at": "2026-11-08T03:47:19Z", "id": 128619274157},
@@ -825,7 +831,7 @@
     {
       "pr": 5387,
       "sha": "3089a0191b93e6e73129090a539051d3f1893382",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "332289860d9bef36c4394bd114c724f4973861ecf7b3e804f4bc56889fd5751f"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "484dd47eee689ace3ccb99e8bf6f7cafaa8cd247a4cacc2574a83bec55dfb266"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "df16d361856024aad5ef2005eaf1fc18865cc98a362faee5a39ce9e98cd64df1"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "8d244d5d837b4a6a1a2d5938d1632c1fa302646ebc3a2eafd97add33c6b64239"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "c74f3f0c16dc1ededd7c1fa7a40eadfb67fc626510f1c382eb06049a06834ccd"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "8ad366c15fd566750575104b8b3974ddd1a5191bc51e996530fc3a707d14688d"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:53:39Z", "started_at": "2026-11-08T03:53:39Z", "id": 128699999007},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:53:39Z", "started_at": "2026-11-08T03:53:39Z", "id": 128699999107},
@@ -835,6 +841,7 @@
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:54:19Z", "started_at": "2026-11-08T03:54:19Z", "id": 128620698580},
         {"name": "BYOK Customer Chooses Model (OMN-20844)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:54:23Z", "started_at": "2026-11-08T03:54:23Z", "id": 128620700932},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:54:23Z", "started_at": "2026-11-08T03:54:23Z", "id": 128620700933},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:54:23Z", "started_at": "2026-11-08T03:54:23Z", "id": 128620700940},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:53:52Z", "started_at": "2026-11-08T03:53:52Z", "id": 128620698858},
         {"name": "CI Summary", "status": "completed", "conclusion": "failure", "completed_at": "2026-11-08T04:14:16Z", "started_at": "2026-11-08T04:14:16Z", "id": 128620700997},
         {"name": "Canonical File Shape (OMN-20304)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:54:25Z", "started_at": "2026-11-08T03:54:25Z", "id": 128620700939},
@@ -989,7 +996,7 @@
     {
       "pr": 5388,
       "sha": "96516f0fb24f479eb24e1e72da4913afdc0b7c3d",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "53986497760bb371e22b2ccc6eeb8ba87253e3d91a4d1fc1ce3a5860ee567306"}, "merge_group:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "052c17a3c42a7f2f2f53ff700a7eec7ae29f81c04062c9189a20cf99b6480fe1"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "1442dc88118abf458a46b96fd1e20df3f807265f01c560c4cc66a390d07f6339"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "18a17aabb8190045d7aeb4413168b976dee37e24522761b56e4d015c9eafc2b4"}, "merge_group:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "1e3c2b4e1f1b793c55ecd65d3d9d431173b8509ba55fa57b774351ad81a54cad"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "30ca2d06302b14dce2957ec3b6b148425bcc9d33ad59dc46a087744fcfaedf83"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:26Z", "started_at": "2026-11-08T04:11:26Z", "id": 128699999008},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:26Z", "started_at": "2026-11-08T04:11:26Z", "id": 128699999108},
@@ -999,6 +1006,7 @@
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:12:07Z", "started_at": "2026-11-08T04:12:07Z", "id": 128624301251},
         {"name": "BYOK Customer Chooses Model (OMN-20844)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:12:19Z", "started_at": "2026-11-08T04:12:19Z", "id": 128624303759},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:12:19Z", "started_at": "2026-11-08T04:12:19Z", "id": 128624303760},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:12:19Z", "started_at": "2026-11-08T04:12:19Z", "id": 128624303767},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:39Z", "started_at": "2026-11-08T04:11:39Z", "id": 128624301429},
         {"name": "CI Summary", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:11:38Z", "started_at": "2026-11-08T04:11:38Z", "id": 128624303710},
         {"name": "Canonical File Shape (OMN-20304)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:12:28Z", "started_at": "2026-11-08T04:12:28Z", "id": 128624303383},
@@ -1133,7 +1141,7 @@
     {
       "pr": 5389,
       "sha": "331d81e5857a04e9cc89d3c497649bf0847070b7",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "af1d87e95843e67d582a426f407bc2d893c0199bebf1aeb3ba95247d3830613b"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "0faa3b97d4c487dcf780106767c7f473aeb468b77f5b7f9b28bcac0dfcbe3990"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "a18e0a6ac4e49e43e81b1cecf2300c400cf2bff1a7a0e4dd856491acdd722c40"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "0b5fce453632abc0534830a16b5894c606899c7d3f18c56a83513152ec49ccf0"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "c46a9f15a888c83e2b0aff32b2ad51ad543cb64d9dd42e9318062486b1a4a901"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "d4953f9d88e0adc369028fe27b12071bb64288ce192a6fab1f1ad0908019d15c"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:45Z", "started_at": "2026-11-08T04:53:45Z", "id": 128699999009},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:45Z", "started_at": "2026-11-08T04:53:45Z", "id": 128699999109},
@@ -1142,6 +1150,7 @@
         {"name": "BYOK Catalogue No House Entry", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:48Z", "started_at": "2026-11-08T04:53:48Z", "id": 128632804174},
         {"name": "BYOK Customer Chooses Model (OMN-20844)", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:49Z", "started_at": "2026-11-08T04:53:49Z", "id": 128632804782},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:49Z", "started_at": "2026-11-08T04:53:49Z", "id": 128632804783},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:49Z", "started_at": "2026-11-08T04:53:49Z", "id": 128632804790},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:56Z", "started_at": "2026-11-08T04:53:56Z", "id": 128632802808},
         {"name": "CI Summary", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:48Z", "started_at": "2026-11-08T04:53:48Z", "id": 128632804800},
         {"name": "Canonical File Shape (OMN-20304)", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:49Z", "started_at": "2026-11-08T04:53:49Z", "id": 128632804928},
@@ -1241,7 +1250,7 @@
     {
       "pr": 5390,
       "sha": "bee0521217f19edf949d2199c84d76cd21689d90",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "a33f5e698ccdec61b8bf85f4f05290b21eb6822e53902c419a5562dea3f0ff18"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "506331f539895adc5cd72241388cc9a6c146af71138e1f6b088956692d2d7b3b"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "3b9d19c10d51555b4814346d2eb1cfb26b4a8d04ee47eae09dea729d7c5c16f3"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "0a298e90cf19e5f7a24cbc8753262b60320db0266e6b2c4b57266fdfe8f1f2b7"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "8806453c40e49faecd85b838fa2cd188e0cb814e06a07b6543789a5f04eb5dd9"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "e84935c5146e5d5fa25e9add36491900f954b1a84ae5d5dc2aca7319c793dd7e"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:20:55Z", "started_at": "2026-11-08T04:20:55Z", "id": 128699999010},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:20:55Z", "started_at": "2026-11-08T04:20:55Z", "id": 128699999110},
@@ -1251,6 +1260,7 @@
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:23:50Z", "started_at": "2026-11-08T04:23:50Z", "id": 128626261142},
         {"name": "BYOK Customer Chooses Model (OMN-20844)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:24:08Z", "started_at": "2026-11-08T04:24:08Z", "id": 128626262300},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:24:08Z", "started_at": "2026-11-08T04:24:08Z", "id": 128626262301},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:24:08Z", "started_at": "2026-11-08T04:24:08Z", "id": 128626262308},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:23:11Z", "started_at": "2026-11-08T04:23:11Z", "id": 128626260555},
         {"name": "CI Summary", "status": "completed", "conclusion": "failure", "completed_at": "2026-11-08T04:34:32Z", "started_at": "2026-11-08T04:34:32Z", "id": 128626262434},
         {"name": "Canonical File Shape (OMN-20304)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:24:19Z", "started_at": "2026-11-08T04:24:19Z", "id": 128626262154},
@@ -1401,7 +1411,7 @@
     {
       "pr": 5391,
       "sha": "7101e23cf733189b1ff5e1d20a85192a3cff366e",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "27206bd7268a1d50f06e996d7a3346cc7c49cfda89dc01cae311a33011c7609d"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "322e4e46a677d2a595193e83413bc30a69b1c799c49a40188a42bf19ca7acee3"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "80f02ac3a3610aa6de0274492d1026374fb11d11fb96f40698fe06818b876599"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "fc20cde94c546a26f84b22fb285f56d63ff1084a94ea8aebec846d92fed3ba18"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "4788087c3b8290c73c0c21f1a4b47e6fe5621cfe61101992c5e672a9649de560"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "b684458df4f85b0bed03c8d84b464b26389d9e88780e4e0900072b6d63b0114d"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:39:44Z", "started_at": "2026-11-08T04:39:44Z", "id": 128699999011},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:39:44Z", "started_at": "2026-11-08T04:39:44Z", "id": 128699999111},
@@ -1411,6 +1421,7 @@
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:40:27Z", "started_at": "2026-11-08T04:40:27Z", "id": 128630055126},
         {"name": "BYOK Customer Chooses Model (OMN-20844)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:40:28Z", "started_at": "2026-11-08T04:40:28Z", "id": 128630057226},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:40:28Z", "started_at": "2026-11-08T04:40:28Z", "id": 128630057227},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:40:28Z", "started_at": "2026-11-08T04:40:28Z", "id": 128630057234},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:39:57Z", "started_at": "2026-11-08T04:39:57Z", "id": 128630055590},
         {"name": "CI Summary", "status": "completed", "conclusion": "failure", "completed_at": "2026-11-08T04:40:50Z", "started_at": "2026-11-08T04:40:50Z", "id": 128630057153},
         {"name": "Canonical File Shape (OMN-20304)", "status": "completed", "conclusion": "failure", "completed_at": "2026-11-08T04:40:33Z", "started_at": "2026-11-08T04:40:33Z", "id": 128630057235},
@@ -1544,7 +1555,7 @@
     {
       "pr": 5392,
       "sha": "36ef6b9dd813cfdfd272f87ad177c8dee69e3ae3",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "5efdb879fb2c2a9c7782d744288027ca244f10688ef570ae16688d0435e47725"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "5b119fe68431662c17e75d1c03dfedce2e6a5d0f54835bcb29832197ce3c2d39"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "87d1aee3152f1cac821c96eff7953bffcfd57118ac8c2f5114d9d31521569ece"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "ec2e91c5ed4c9ebacbff09002eced968b4f7f413d5965c01391dfd31e0d5a6e1"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "285d9aa53277c6b4a92b902a85278b63f0275fcc379ca8080ba643dbd54924d8"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "016d45e1fe428b6849c64b09a68b4de8715f1d35a36e8eb8b8396797c7c802dc"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:44:30Z", "started_at": "2026-11-08T04:44:30Z", "id": 128699999012},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:44:30Z", "started_at": "2026-11-08T04:44:30Z", "id": 128699999112},
@@ -1554,6 +1565,7 @@
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:03Z", "started_at": "2026-11-08T04:45:03Z", "id": 128630984519},
         {"name": "BYOK Customer Chooses Model (OMN-20844)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:30Z", "started_at": "2026-11-08T04:45:30Z", "id": 128630986302},
         {"name": "Bus Model Seam Gate (OMN-23995)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:30Z", "started_at": "2026-11-08T04:45:30Z", "id": 128630986303},
+        {"name": "hardcoded-model-config / hardcoded-model-config", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:30Z", "started_at": "2026-11-08T04:45:30Z", "id": 128630986310},
         {"name": "CI Naming Convention", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:44:50Z", "started_at": "2026-11-08T04:44:50Z", "id": 128630984622},
         {"name": "CI Summary", "status": "completed", "conclusion": "failure", "completed_at": "2026-11-08T04:46:30Z", "started_at": "2026-11-08T04:46:30Z", "id": 128630986116},
         {"name": "Canonical File Shape (OMN-20304)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:39Z", "started_at": "2026-11-08T04:45:39Z", "id": 128630986210},

@@ -84,7 +84,7 @@
         },
         "source": {
           "kind": "constructed from the declared response models",
-          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name Qwen3.8-27B as recorded for delegation-inference run ed59cb81"
+          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
         },
         "status": 200
       },
@@ -151,7 +151,7 @@
         },
         "source": {
           "kind": "constructed from the declared response models",
-          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name Qwen3.8-27B as recorded for delegation-inference run ed59cb81"
+          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
         },
         "status": 200
       },
@@ -183,7 +183,7 @@
           "terminal_failure_code": null,
           "terminal_failure_reason": null,
           "terminal_latency_ms": 1840,
-          "terminal_model_used": "Qwen3.8-27B",
+          "terminal_model_used": "fixture-local-model",
           "terminal_remediation": null,
           "terminal_total_tokens": 41,
           "tests_outcome": null,
@@ -193,7 +193,7 @@
         },
         "source": {
           "kind": "constructed from the declared response models",
-          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name Qwen3.8-27B as recorded for delegation-inference run ed59cb81"
+          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
         },
         "status": 200
       },
@@ -219,7 +219,7 @@
         },
         "source": {
           "kind": "constructed from the declared response models",
-          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name Qwen3.8-27B as recorded for delegation-inference run ed59cb81"
+          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
         },
         "status": 200
       },
@@ -244,7 +244,7 @@
           "terminal_failure_code": null,
           "terminal_failure_reason": null,
           "terminal_latency_ms": 1840,
-          "terminal_model_used": "Qwen3.8-27B",
+          "terminal_model_used": "fixture-local-model",
           "terminal_remediation": null,
           "terminal_total_tokens": 41,
           "tests_outcome": null,
@@ -254,7 +254,7 @@
         },
         "source": {
           "kind": "constructed from the declared response models",
-          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name Qwen3.8-27B as recorded for delegation-inference run ed59cb81"
+          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
         },
         "status": 200
       },
@@ -269,7 +269,7 @@
         },
         "source": {
           "kind": "constructed from the declared response models",
-          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name Qwen3.8-27B as recorded for delegation-inference run ed59cb81"
+          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
         },
         "status": 202
       },
@@ -284,7 +284,7 @@
         },
         "source": {
           "kind": "constructed from the declared response models",
-          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name Qwen3.8-27B as recorded for delegation-inference run ed59cb81"
+          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
         },
         "status": 202
       },
@@ -295,7 +295,7 @@
         },
         "source": {
           "kind": "constructed from the declared response models",
-          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name Qwen3.8-27B as recorded for delegation-inference run ed59cb81"
+          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
         },
         "status": 401
       },
@@ -313,7 +313,7 @@
         },
         "source": {
           "kind": "constructed from the declared response models",
-          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name Qwen3.8-27B as recorded for delegation-inference run ed59cb81"
+          "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
         },
         "status": 400
       },
@@ -350,6 +350,6 @@
     }
   },
   "schema_version": 1,
-  "served_model": "Qwen3.8-27B",
+  "served_model": "fixture-local-model",
   "ticket": "OMN-26652"
 }

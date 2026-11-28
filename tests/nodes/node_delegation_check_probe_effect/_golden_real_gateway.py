@@ -194,7 +194,7 @@ class InProcessGateway:
             self.gateway.store.apply_terminal(
                 UUID(workflow_id),
                 status="completed",
-                terminal_model_used="Qwen3.8-27B",
+                terminal_model_used="fixture-local-model",
                 terminal_total_tokens=41,
                 terminal_latency_ms=1840,
                 terminal_route="local",

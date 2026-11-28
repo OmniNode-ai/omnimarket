@@ -12,21 +12,21 @@
     "backends": [
      {
       "backend_id": "local-coder",
-      "model_name": "Qwen3.8-27B",
+      "model_name": "fixture-local-model",
       "provider": "local",
       "tier": "local",
       "endpoint": "h201:8000"
      },
      {
       "backend_id": "local-heavy-reasoning",
-      "model_name": "Qwen3.8-27B",
+      "model_name": "fixture-local-model",
       "provider": "local",
       "tier": "local",
       "endpoint": "h201:8000"
      },
      {
       "backend_id": "local-omnipc2-chat",
-      "model_name": "Qwen3.8-27B",
+      "model_name": "fixture-local-model",
       "provider": "local",
       "tier": "local",
       "max_tokens": 16384,
@@ -51,21 +51,21 @@
     "backends": [
      {
       "backend_id": "local-coder",
-      "model_name": "Qwen3.8-27B",
+      "model_name": "fixture-local-model",
       "provider": "local",
       "tier": "local",
       "endpoint": "h201:8000"
      },
      {
       "backend_id": "local-heavy-reasoning",
-      "model_name": "Qwen3.8-27B",
+      "model_name": "fixture-local-model",
       "provider": "local",
       "tier": "local",
       "endpoint": "h201:8000"
      },
      {
       "backend_id": "local-omnipc2-chat",
-      "model_name": "Qwen3.8-27B",
+      "model_name": "fixture-local-model",
       "provider": "local",
       "tier": "local",
       "max_tokens": 16384,
@@ -84,7 +84,7 @@
      },
      {
       "backend_id": "local-h201-4090-chat",
-      "model_name": "Qwen3.8-27B",
+      "model_name": "fixture-local-model",
       "provider": "local",
       "tier": "local",
       "max_tokens": 8192,

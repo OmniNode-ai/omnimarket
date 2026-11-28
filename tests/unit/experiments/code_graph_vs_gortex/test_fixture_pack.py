@@ -110,3 +110,11 @@ def test_a_pack_with_a_missing_gate_number_is_refused() -> None:
     broken["G3"] = broken["G3"].replace("0.80", "1.00")
     with pytest.raises(AssertionError):
         assert "0.80" in broken["G3"]
+
+
+def test_gate_names_its_model_as_a_setting_not_a_model_id() -> None:
+    """OMN-26651: both arms run the one model the deployment declares; the gate holds a setting name."""
+    design = _load("gate.yaml")["design"]
+    assert "model" not in design
+    assert design["model_setting"] == "EXPERIMENT_GATE_MODEL"
+    assert "model" in design["same_for_both_arms"]

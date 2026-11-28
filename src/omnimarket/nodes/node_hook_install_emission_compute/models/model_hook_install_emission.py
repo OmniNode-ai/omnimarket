@@ -9,19 +9,21 @@ the window start. Nothing is read from a host or a table here.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
+    StringConstraints,
     model_validator,
 )
 
 #: The tools whose events the projection's `actor` column names (the capture contract's actor envelope).
-Tool = Literal["claude", "codex"]
-Actor = Literal["claude", "codex", "unknown"]
+#: The tool is a name the request declares, never a literal here (OMN-26651): the hard-coded model guard refuses an engine label in source.
+Tool = Annotated[str, StringConstraints(min_length=1)]
+Actor = Annotated[str, StringConstraints(min_length=1)]
 InstallStatus = Literal["emitting", "partial", "silent"]
 
 

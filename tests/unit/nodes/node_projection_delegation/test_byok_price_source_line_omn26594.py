@@ -17,12 +17,18 @@ from decimal import Decimal
 
 import pytest
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_backend_by_id,
+)
 from omnimarket.nodes.node_projection_delegation.handlers import byok_actual_cost
 
 pytestmark = pytest.mark.unit
 
 LOGGER = "omnimarket.nodes.node_projection_delegation.handlers.byok_actual_cost"
 READ_AT = "2026-11-24T22:00:00+00:00"
+# The price key is the catalogue's own first priced model of the backend, never spelled in a test (OMN-26651).
+_BACKEND = "byok-glm-general"
+_PRICED_MODEL = resolve_byok_backend_by_id(_BACKEND).model_prices[0].model_name
 
 
 def _priced_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
@@ -39,7 +45,7 @@ def test_a_catalogue_priced_call_logs_the_catalogue_as_its_source(
     caplog.set_level(logging.INFO, logger=LOGGER)
     cost = byok_actual_cost.byok_priced_actual_cost(
         backend_id="byok-glm-general",
-        model_name="glm-5.3-flash",
+        model_name=_PRICED_MODEL,
         prompt_tokens=231,
         completion_tokens=255,
     )
@@ -47,7 +53,7 @@ def test_a_catalogue_priced_call_logs_the_catalogue_as_its_source(
     lines = _priced_lines(caplog)
     assert len(lines) == 1
     assert "backend_id=byok-glm-general" in lines[0]
-    assert "model=glm-5.3-flash" in lines[0]
+    assert f"model={_PRICED_MODEL}" in lines[0]
     assert "price_source=byok_provider_backends" in lines[0]
     assert "price_read_at=None" in lines[0]
 
@@ -99,7 +105,7 @@ def test_a_house_key_call_logs_no_priced_line(
     caplog.set_level(logging.INFO, logger=LOGGER)
     cost = byok_actual_cost.byok_priced_actual_cost(
         backend_id=None,
-        model_name="glm-5.3-flash",
+        model_name=_PRICED_MODEL,
         prompt_tokens=10,
         completion_tokens=10,
     )

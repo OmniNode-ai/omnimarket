@@ -2158,7 +2158,7 @@ packages = ["src/omnimarket"]
 # verify nothing on a `uv tool install` copy. This maps the same file a human
 # edits to the resource the runtime reads, so there is exactly one source of
 # truth -- the mechanism `config/ci_bus_lanes.yaml` already uses above.
-force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.yaml", "pyproject.toml" = "omnimarket/dashboard_bundle_pin.toml" }
+force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.yaml", "config/onex" = "omnimarket/onex_config", "pyproject.toml" = "omnimarket/dashboard_bundle_pin.toml" }
 
 [tool.onex.dashboard_bundle]
 # The OmniDash static build `onex dashboard` serves. Published by
