@@ -57,6 +57,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_exha
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
     ModelLandingLabCheckFacts,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_line import (
+    ModelLandingLabLineFact,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_liveness import (
     ModelLandingLivenessFacts,
 )
@@ -296,6 +299,14 @@ class ModelLandingPrFacts(BaseModel):
             "Only a run on this exact head carrying the current attempt's identity "
             "counts; a pass lets the head merge, a failing, running, missing or "
             "superseded one holds it with its own reason. Absent: decided as before."
+        ),
+    )
+    lab_line: ModelLandingLabLineFact | None = Field(
+        default=None,
+        description=(
+            "The head this PR's newest Lab line names (OMN-26736). A PR merges only when it names the exact head; "
+            "another head or none holds it as lab_line_needs_proof. Absent: decided as before, unless "
+            "policy.lab_line_read_expected, which holds it as lab_line_needs_proof."
         ),
     )
     liveness: ModelLandingLivenessFacts | None = Field(
@@ -619,6 +630,14 @@ class ModelLandingPolicy(BaseModel):
             "OMN-26513: the snapshot step runs the downstream check for every PR into a downstream_gate_repos "
             "repository, so such a PR with no downstream fact is held as downstream_unread. False until the "
             "snapshot reads the fact, so no core or spi PR is held for a read nobody makes."
+        ),
+    )
+    lab_line_read_expected: bool = Field(
+        default=False,
+        description=(
+            "OMN-26736: the snapshot step reads the newest Lab line of every PR, so a PR with no lab_line fact is "
+            "held as lab_line_needs_proof. False until the snapshot reads the fact, so no PR is held for a read "
+            "nobody makes."
         ),
     )
     lab_check_wait_seconds: int = Field(
