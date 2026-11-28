@@ -5416,7 +5416,15 @@ jobs:
                 rm -f workflow_runs.json
               fi
             fi
-            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --workflow-runs-file workflow_runs.json --head-workflow-runs-file head_workflow_runs.json --current-run-id "${RUN_ID}" --pr-number "${PR_NUMBER:-0}" --actor "${ACTOR}" --event "${{ github.event_name }}" --ref-name "${REF_NAME}"
+            # OMN-26424: a pull request whose head repository is not this one is a fork; the
+            # undeclared-read check needs secrets a fork never gets, so its skip there is the
+            # gate's declared fork skip. Absent or equal head repository leaves the flag off.
+            fork_args=()
+            if [ "${{ github.event_name }}" = "pull_request" ] \
+                && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+              fork_args=(--head-is-fork)
+            fi
+            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --workflow-runs-file workflow_runs.json --head-workflow-runs-file head_workflow_runs.json --current-run-id "${RUN_ID}" --pr-number "${PR_NUMBER:-0}" --actor "${ACTOR}" --event "${{ github.event_name }}" --ref-name "${REF_NAME}" "${fork_args[@]}"
             rc=$?
             case "${rc}" in
               0) echo "::notice::CI Summary = SUCCESS (all gating jobs + external contexts provably passed)"; exit 0 ;;

@@ -33,6 +33,24 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_undeclared_read_check.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26424-ac7-strict-gate
+  description: 'AC7: CI Summary lists Undeclared Read Check (OMN-26424) in STRICT_GATE_JOBS, so a skipped, cancelled or failed run refuses the required context and an absent run holds it pending, while a green run passes; the fork case stays as Coverage Sweep Gate (strict, the job''s own if: skips it, a skip refuses). Branch protection is not edited.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_undeclared_read_strict_omn26424.py tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26424-ac7-fork-skip
+  description: 'AC7: the undeclared-read job needs the ONEXBOT_APP secrets to read the settings declarations, which a fork pull request never gets, so CI Summary names its skip on a fork head as a declared fork skip (FORK_SKIPPABLE_GATE_JOBS, --head-is-fork set by ci.yml from the head repository); the skip on a head that is not a fork still refuses, and a failure or cancellation refuses on both.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_undeclared_read_strict_omn26424.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26424-deploy-probe
   description: 'Deploy probe for AC7: the node contract read from GitHub at the checked-out commit names node_undeclared_read_check_compute. A head that does not carry the node there fails the probe.'
   source: manual

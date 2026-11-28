@@ -143,6 +143,12 @@
           ]
         },
         {
+          "name": "Undeclared Read Check (OMN-26424)",
+          "note": [
+            "undeclared-read-check — refuses an added read of a setting no overlay declares; its own if: skips it on a pull request from a fork (it needs the ONEXBOT_APP secrets, which a fork does not get); the skip passes only as the declared fork skip (FORK_SKIPPABLE_GATE_JOBS, head is a fork), and on any other head a skipped, absent or cancelled run refuses CI Summary"
+          ]
+        },
+        {
           "name": "Workflow Module Resolution",
           "note": [
             "workflow-module-refs — needs occ-preflight, no if:"
@@ -378,6 +384,25 @@
             "in ci.yml (no needs/if), so a skip is anomalous and never a legitimate opt-out.",
             "bus-model-seam-gate"
           ]
+        }
+      ]
+    },
+    "FORK_SKIPPABLE_GATE_JOBS": {
+      "kind": "tuple",
+      "rationale": [
+        "Strict gates with ONE declared skip: a pull request whose head is a fork.",
+        "",
+        "The job reads the settings declarations through a GitHub App token minted from",
+        "the ONEXBOT_APP_ID and ONEXBOT_APP_PRIVATE_KEY secrets. GitHub gives a fork pull",
+        "request no secrets, so no hosted runner can run the job for a fork: the skip is a",
+        "secret, not a runner or a habit. The gate reads it as its own named outcome, a",
+        "declared fork skip, only when the caller says the head is a fork (--head-is-fork);",
+        "a skip on any other head, a failure and a cancellation refuse on both. Every entry",
+        "must also be in STRICT_GATE_JOBS."
+      ],
+      "entries": [
+        {
+          "name": "Undeclared Read Check (OMN-26424)"
         }
       ]
     },
