@@ -84,6 +84,7 @@ def test_setup_exits_zero_and_writes_its_configuration_on_a_clean_machine(
                 "-i",
                 f"HOME={home}",
                 f"PATH={venv_bin}:/usr/bin:/bin",
+                "ONEX_CLI_SHOW_ALL_COMMANDS=1",
                 str(onex),
                 "setup",
                 "--workspace",

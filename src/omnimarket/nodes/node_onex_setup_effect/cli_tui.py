@@ -14,12 +14,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import re
 import shlex
 import signal
 import time
 from collections import Counter
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from typing import ClassVar, Literal, Protocol, TypeVar, cast
 from urllib.parse import urlparse
 
@@ -89,6 +90,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
     tui_design,
 )
 
+_SHOW_ALL_SWITCH = "ONEX_CLI_SHOW_ALL_COMMANDS"
 _PROMPTING_OPTIONS = frozenset(("interactive", "yes"))
 
 
@@ -310,6 +312,20 @@ def _needs_terminal(command: click.Command) -> bool:
     return False
 
 
+@contextlib.contextmanager
+def _operator_surface_listed() -> Iterator[None]:
+    """Turn the core's list-everything switch on while the command tree is read."""
+    previous = os.environ.get(_SHOW_ALL_SWITCH)
+    os.environ[_SHOW_ALL_SWITCH] = "1"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(_SHOW_ALL_SWITCH, None)
+        else:
+            os.environ[_SHOW_ALL_SWITCH] = previous
+
+
 def command_tree(root: click.Group) -> tuple[ModelTuiCommand, ...]:
     """Every leaf command under ``root``, read from click at call time."""
     found: list[ModelTuiCommand] = []
@@ -335,7 +351,10 @@ def command_tree(root: click.Group) -> tuple[ModelTuiCommand, ...]:
                 )
             )
 
-    walk(root, click.Context(root, info_name="onex"), ())
+    # The core lists only its customer surface unless this switch is on; the TUI decides for itself
+    # which commands a customer may run, so it reads the whole tree and filters it below.
+    with _operator_surface_listed():
+        walk(root, click.Context(root, info_name="onex"), ())
     return tuple(sorted(found, key=lambda entry: entry.path))
 
 

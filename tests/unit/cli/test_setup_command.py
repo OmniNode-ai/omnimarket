@@ -73,6 +73,12 @@ def _answering_model_step(request: ModelOnexSetupRequest) -> ModelOnexSetupRecei
     )
 
 
+@pytest.fixture(autouse=True)
+def _operator_surface(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`onex setup` is listed only on the operator surface since the omnibase_infra pin raise."""
+    monkeypatch.setenv("ONEX_CLI_SHOW_ALL_COMMANDS", "1")
+
+
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """A clean HOME; the real home directory is never used."""
