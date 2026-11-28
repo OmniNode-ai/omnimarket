@@ -33,6 +33,9 @@ import yaml
 from omnibase_core.models.nodes.handler_dependencies.model_built_dependencies import (
     ModelBuiltDependencies,
 )
+from omnibase_core.models.nodes.handler_dependencies.model_dependency_binding import (
+    ModelDependencyBinding,
+)
 from omnibase_core.models.nodes.handler_dependencies.model_overlay_bindings import (
     ModelOverlayBindings,
 )
@@ -41,6 +44,8 @@ from omnimarket.protocols.protocol_overlay_document import ProtocolOverlayDocume
 from omnimarket.protocols.protocol_process_environment import (
     ProtocolProcessEnvironment,
 )
+
+OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
 
 PROCESS_ENVIRONMENT_PROTOCOL = (
     f"{ProtocolProcessEnvironment.__module__}.{ProtocolProcessEnvironment.__qualname__}"
@@ -99,6 +104,21 @@ class _FileDocuments:
         )
 
 
+class _RootDocuments:
+    """Documents found as ``<root>/<name>/overlay.yaml`` under ``ONEX_SKILL_OVERLAY_ROOTS``.
+
+    The roots are read from the process environment on each ask, so a document the settings
+    store writes after start is seen by the next call. The first root holding a name wins.
+    """
+
+    def read(self, name: str) -> dict[str, Any] | None:
+        for root in os.environ.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep):
+            path = Path(root) / name / "overlay.yaml" if root else None
+            if path is not None and path.is_file():
+                return _mapping(yaml.safe_load(path.read_text()), name)
+        return None
+
+
 def _mapping(loaded: object, name: str) -> dict[str, Any]:
     if not isinstance(loaded, dict):
         raise ValueError(f"overlay document {name} must be a mapping")
@@ -121,11 +141,16 @@ def file_overlay_documents(config: Mapping[str, str]) -> object:
     return _FileDocuments(config)
 
 
+def root_overlay_documents(config: Mapping[str, str]) -> object:
+    return _RootDocuments()
+
+
 FACTORIES: dict[str, Callable[[Mapping[str, str]], object]] = {
     "memory_process_environment": memory_process_environment,
     "host_process_environment": host_process_environment,
     "memory_overlay_documents": memory_overlay_documents,
     "file_overlay_documents": file_overlay_documents,
+    "root_overlay_documents": root_overlay_documents,
 }
 
 _installed: list[ModelOverlayBindings] = []
@@ -182,11 +207,45 @@ def bind_overlay_file(path: str) -> Path:
     return Path(path)
 
 
+def runtime_overlay_bindings() -> ModelOverlayBindings | None:
+    """The overlay a deployed runtime runs on when no host CLI installed one (OMN-26766).
+
+    The runtime process never calls ``bind_overlay``. What it has is the host process
+    environment and the overlay roots the lane declares in ``ONEX_SKILL_OVERLAY_ROOTS``:
+    those are the two bindings, and with no root declared there is nothing to bind to.
+    """
+    if not any(os.environ.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep)):
+        return None
+    return ModelOverlayBindings(
+        dependencies=(
+            ModelDependencyBinding(
+                protocol=PROCESS_ENVIRONMENT_PROTOCOL,
+                implementation="host_process_environment",
+            ),
+            ModelDependencyBinding(
+                protocol=OVERLAY_DOCUMENT_PROTOCOL,
+                implementation="root_overlay_documents",
+            ),
+        ),
+        announcer_bus=ModelDependencyBinding(
+            protocol="announcer_bus", implementation="unbuilt_announcer_bus"
+        ),
+        catalog_store=ModelDependencyBinding(
+            protocol="catalog_store", implementation="unbuilt_catalog_store"
+        ),
+        lazy_start_budget_seconds=30.0,
+    )
+
+
 def build_dependencies(
     declared: Sequence[str], overlay: ModelOverlayBindings | None = None
 ) -> ModelBuiltDependencies:
-    """Build ``declared`` from the overlay; with none installed every protocol is unbound."""
-    bindings = overlay if overlay is not None else installed_overlay()
+    """Build ``declared`` from the overlay; with none installed, from the runtime's roots, else unbound."""
+    bindings = (
+        overlay
+        if overlay is not None
+        else installed_overlay() or runtime_overlay_bindings()
+    )
     if bindings is None:
         from omnibase_core.enums.enum_dependency_binding_refusal_reason import (
             EnumDependencyBindingRefusalReason,

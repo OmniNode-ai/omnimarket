@@ -1560,7 +1560,17 @@ class HandlerDelegateSkill:
 
             self._idempotency_port = select_delegation_idempotency_port()
         if dispatch_port is not None:
-            self._dispatch_port: ProtocolDelegationDispatchPort = dispatch_port
+            # OMN-19998: the deployed runtime injects its own bus port, which has no
+            # harness route; a pin to a ``kind: harness`` backend must still reach the
+            # harness handler, so the injected port is wrapped (or kept, when it has
+            # no bus to publish on).
+            from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_harness_pin_dispatch import (
+                with_harness_pin,
+            )
+
+            self._dispatch_port: ProtocolDelegationDispatchPort = with_harness_pin(
+                dispatch_port
+            )
         else:
             # Transport-aware port selection is owned by the ports package, not
             # this domain handler. A bus-less or in-memory single-process runtime

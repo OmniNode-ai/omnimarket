@@ -1,0 +1,58 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-26766"
+title: "The Claude medium delegation tier runs through the signed-in Claude harness, not the byok-anthropic HTTP backend"
+summary: "A pin to a declared harness backend reaches the harness handler when the runtime injects its own dispatch port; before, the pin fell through to the byok-anthropic HTTP backend and ended HTTP 401."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26766-harness-pin-injected-port"
+    statement: |-
+      A pin to a declared harness backend reaches the harness handler when the runtime injects its own dispatch port.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a delegation pinned to the Claude medium harness backend is dispatched through the injected harness-pin port and never reaches the byok-anthropic HTTP backend; the test fails on the current handler and passes on the fix -- falsifier: uv run pytest tests/unit/delegation/test_harness_pin_on_injected_port_omn19998.py -q
+      - id: "AC2"
+        statement: |-
+          AC2: one real delegation through the Claude medium tier on the lab ends success with a bus event naming backend harness:claude:claude-sonnet-5-5 -- falsifier: onex delegate --backend-id harness-claude-sonnet on a lab host, then read the delegation event on the bus
+evidence_requirements:
+  - kind: "tests"
+    description: "The harness-pin port wrapper is run against a stand-in for the runtime's own port and a loopback bus; the published topic, the generic pass-through, the signature and the handler wrap are asserted."
+    command: "uv run pytest tests/unit/delegation/test_harness_pin_on_injected_port_omn19998.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26766-harness-pin-injected-port"
+    description: "Recorded run c15d72ae (pin harness-claude-sonnet, ended on byok-anthropic with HTTP 401) is the failing control; the new tests publish the same pin on the harness-execute topic through an injected port and keep other pins on it."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_harness_pin_on_injected_port_omn19998.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn26766-integration-proof-claude-medium"
+    description: "The lab runs the focused test at the pushed head; the real pinned delegation reading is on the PR's Lab line, and hosted CI cannot reach the lab."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path \"${OMNI_HOME:?}\" --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26766 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_harness_pin_on_injected_port_omn19998.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn26766-harness-handler-runtime-binding"
+    description: "With no overlay installed (as in the deployed runtime) and the overlay roots declared in ONEX_SKILL_OVERLAY_ROOTS, the harness handler resolves its two declared protocols; before, it raised DependencyUnboundError for ProtocolProcessEnvironment and ProtocolOverlayDocument."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_harness_handler_runtime_binding_omn26766.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn26766-lab-item-binds-no-criterion"
+    description: "The lab-only integration-proof item binds no criterion, since the hosted must-fail control at the merge base never runs a local_done_gate item; AC1 and AC2 stay bound by hosted test items."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn26766_contract_hosted_controllable.py -q --no-cov"
+        cwd: "."
