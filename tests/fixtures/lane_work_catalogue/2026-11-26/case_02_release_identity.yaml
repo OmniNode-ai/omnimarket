@@ -1,0 +1,144 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Catalogue fixture (OMN-26701): a pinned snapshot of the 2026-11-26 failure,
+# the raw results quoted verbatim from the sources below, each with the sha256 of
+# its quote. Roots: ledger (the ledger directory: path `live` is the live file,
+# `roll:<day>-split` an archive roll), remote-lane-receipts, open-work (the orchestrator handoff).
+schema: "lane_work_catalogue_fixture.v1"
+day: "2026-11-26"
+case: "case_02_release_identity"
+catalogue_row: "2"
+summary: "Commits refused by release identity while the branch version equalled the published one; the bump (omnimarket#6919) unblocked every packaged change once merged."
+w_rows:
+  - "W929"
+  - "W940"
+  - "W947"
+  - "W949"
+  - "W953"
+entry_state: "fixing"
+overlay_pinned:
+  poll_seconds: 300
+  wait_budget_seconds: 600
+sources:
+  - id: "s1"
+    role: "raw_result"
+    root: "ledger"
+    path: "live"
+    row_timestamp: "2026-11-26T09:28:49Z"
+    lane: "deadrun3-63000"
+    row_kind: "TERMINAL"
+    quote: "| blocker=hook `check-release-identity` (OMN-13411) refuses the commit because `pyproject.toml` version 0.4.328 is not ahead of the published 0.4.328, and the brief forbids a bump."
+    sha256: "46e6f4245a4f659903a4a754e6eb4c7ca6b064bf2ae9ae2fbd8ec943f13b617d"
+    redacted: false
+  - id: "s2"
+    role: "raw_result"
+    root: "ledger"
+    path: "live"
+    row_timestamp: "2026-11-26T10:05:25Z"
+    lane: "hcodexr-65000"
+    row_kind: "TERMINAL"
+    quote: "| blocker=`check-release-identity` refused the commit — packaged source changed with `pyproject` 0.4.328 equal to the published 0.4.328, and the brief forbids a version bump."
+    sha256: "4af04e6809868cfc09ebad2200f822e5b81156086ebb9a92a03da3b397cce83a"
+    redacted: false
+  - id: "s3"
+    role: "evidence"
+    root: "ledger"
+    path: "live"
+    row_timestamp: "2026-11-26T10:14:21Z"
+    lane: "hclauder2-65400"
+    row_kind: "TERMINAL"
+    quote: "| blocker=pre-commit hook `check-release-identity` (OMN-13411) rejects the change because it needs a version bump, which the brief forbids."
+    sha256: "09ea4798e0f6310e5527227d2e46a26cb7e756350df1821ef4fe6877242b68e6"
+    redacted: false
+  - id: "s4"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W929"
+    quote: "| W929 | 13:00Z REGRESSION, TOP: checksnow on dev 08:28Z to 08:46Z: C11 C12 C17 PASS, C13 C14 C15 C16 C28 C29 C30 FAIL. Healthy runs end failed (expected the 32-token budget, fixed by 6909, which is red on Split 6: red6909); dead/unroutable/invalid runs never reach failed (gateway defect): deadrun-61600 TOP; why-failed-61600 reads the reasons. Tenant CLI (6733) blocked by release identity: omnimarket dev 0.4.328 equals published | orchestrator | +20m |"
+    sha256: "15679df8d059d6bc1eb5cf33d14c6cb68c5ab044b4a5dd6a044a08014a594db0"
+    redacted: false
+  - id: "s5"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W940"
+    quote: "deadrun3 fix built, blocked by release identity; red6306b pushed 55d1ab8f19 | orchestrator | +20m |"
+    sha256: "839220899ae9d5ed6fd7e803c49a8a6fadc57ca6cc76405d1796e740ad0e4a9b"
+    redacted: false
+  - id: "s6"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W947"
+    quote: "| W947 | 15:35Z updated the release bot's post-release bump omnimarket#6919 branch with dev (its only red was the shared OMN-22708 test dev fixed); it unblocks every omnimarket packaged change (hcodexr, deadrun3, c13local, lt26475c all refused by release identity). hclauder hchainr refused stale claim -> requeued | orchestrator | +15m |"
+    sha256: "640be4728a43aca27a72c60f05c06a341aa5305e77e56187fe6dd33482531ddf"
+    redacted: false
+  - id: "s7"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W949"
+    quote: "| W949 | 16:00Z release identity blocks infra too: dev 0.38.85 published; bot bump omnibase_infra#6310 DIRTY -> bump6310 resolves; omnimarket bump 6919 updated, waits checks; openprs2r: most omnimarket reds are Split 6 from the old dev (need a dev merge) or release identity; MCP infra half staged as a patch, blocked by release identity | orchestrator | +20m |"
+    sha256: "5904994f5e880654466dcc49ecc57e6b33e7d0ae4e8cf252192875cdce0e5e6b"
+    redacted: false
+  - id: "s8"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W953"
+    quote: "| W953 | 16:45Z omnimarket#6919 MERGED (post-release bump 0.4.329): release identity unblocked; placed m6909 m6914 m6903 m6899 (dev merges) and cdead ccodex cglm cclaude cblock ctenant (commit staged patches), one at a time, h201 and h202 only (h053 push guard fix"
+    sha256: "af9a83f6475a1da77dfbba52e5f0fe3f027eb67f517c93ef13c853c4448eb8bc"
+    redacted: false
+    note: "omnimarket#6919 merged: the commit passes from here on"
+replay:
+  - step: "raw_result"
+    source: "s1"
+    at: "2026-11-26T09:28:49Z"
+    expect:
+      event:
+        kind: "commit_refused"
+        cls: "release_identity"
+      state: "waiting_release"
+      action:
+        kind: "arm_poll_deadline"
+        wait_budget: true
+  - step: "tick"
+    at: "2026-11-26T09:33:49Z"
+    deadline: "poll"
+    expect:
+      event:
+        kind: "deadline_passed"
+        deadline: "poll"
+      state: "fixing"
+      action:
+        kind: "agent"
+        do: "commit again"
+  - step: "raw_result"
+    source: "s2"
+    at: "2026-11-26T09:34:00Z"
+    expect:
+      event:
+        kind: "commit_refused"
+        cls: "release_identity"
+      state: "waiting_release"
+      action:
+        kind: "arm_poll_deadline"
+        wait_budget: false
+  - step: "tick"
+    at: "2026-11-26T09:38:49Z"
+    deadline: "wait_budget"
+    expect:
+      event:
+        kind: "deadline_passed"
+        deadline: "wait_budget"
+      state: "help_requested"
+      action:
+        kind: "help_request"
+        names: "the release identity wait"
+expected:
+  final_state: "help_requested"
+  action:
+    kind: "help_request"
+    names: "the release identity wait"
+  passes_once_bump_merges: "s8"
