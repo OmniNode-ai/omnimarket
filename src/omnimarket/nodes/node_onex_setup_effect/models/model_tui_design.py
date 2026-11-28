@@ -75,6 +75,10 @@ class ModelTuiTheme(BaseModel):
     border: str
     #: The fill behind a question in the conversation.
     chip: str = "#2c313c"
+    #: The delegation toggle's filled track, switched on and off (OMN-26688):
+    #: solid, as the terminal's own ground cannot be blended over.
+    toggle_on: str = "#2a4a34"
+    toggle_off: str = "#353a44"
     #: A task card's bar for a cheap model, and for the Claude fallback.
     route_cheap: str
     route_fallback: str
@@ -94,6 +98,8 @@ class ModelTuiTheme(BaseModel):
         "panel",
         "border",
         "chip",
+        "toggle_on",
+        "toggle_off",
         "route_cheap",
         "route_fallback",
     )
@@ -229,6 +235,9 @@ class ModelTuiLayout(BaseModel):
     header: bool
     #: Show the search box above the table (the Config tab's found list).
     search: bool = False
+    #: Column names above the rows with a line under them, and striped rows,
+    #: as /config's providers table (OMN-26688).
+    ruled: bool = False
     columns: tuple[ModelTuiLayoutColumn, ...] = Field(min_length=1)
 
 
@@ -304,6 +313,19 @@ class ModelTuiDelegationHook(BaseModel):
     pause_flag: str = Field(pattern=r"^--no-[a-z]+$")
 
 
+class ModelTuiDelegationAgent(BaseModel):
+    """One coding agent on the Delegation tab (OMN-26688, operator 2026-11-26)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key: str = Field(pattern=r"^[a-z0-9_]+$")
+    name: str = Field(min_length=1)
+    #: Its switch delegates today (Claude Code, through its hook). Every other
+    #: agent's integration is in progress: its switch is remembered and sends
+    #: nothing yet.
+    live: bool = False
+
+
 class ModelTuiDelegation(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -340,6 +362,18 @@ class ModelTuiDelegation(BaseModel):
     #: OMN-23413: setup's read-only check of the claude-plugin step, run when the
     #: tab opens; its evidence.claude_code says installed, signed out or missing.
     claude_check: tuple[str, ...] = Field(min_length=1)
+    #: The agents the tab lists, in order (OMN-26688); exactly one is live.
+    agents: tuple[ModelTuiDelegationAgent, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _one_live_agent(self) -> ModelTuiDelegation:
+        live = [agent.key for agent in self.agents if agent.live]
+        if len(live) != 1:
+            raise ValueError(f"exactly one agent is live, found {live}")
+        keys = [agent.key for agent in self.agents]
+        if len(set(keys)) != len(keys):
+            raise ValueError(f"agent keys repeat: {keys}")
+        return self
 
 
 class ModelTuiDashboard(BaseModel):

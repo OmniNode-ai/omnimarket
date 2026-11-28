@@ -225,7 +225,9 @@ class FakeModels:
 
 
 @pytest.mark.parametrize("google", [True, False])
-def test_model_discovery_reads_exact_declared_url_with_bearer(google: bool) -> None:
+def test_model_discovery_reads_exact_declared_url_with_googles_key_header(
+    google: bool,
+) -> None:
     body = (
         {"models": [{"name": f"models/{NEW}"}]} if google else {"data": [{"id": NEW}]}
     )
@@ -234,7 +236,7 @@ def test_model_discovery_reads_exact_declared_url_with_bearer(google: bool) -> N
     assert (result.outcome, result.model, result.listed_count) == ("resolved", NEW, 1)
     assert len(get.calls) == 1
     assert get.calls[0]["url"] == _row().models_url
-    assert get.calls[0]["extra_headers"] == {"Authorization": f"Bearer {KEY}"}
+    assert get.calls[0]["extra_headers"] == {"x-goog-api-key": KEY}
     _safe(result.model_dump(), discovery.describe_discovery_refusal(result))
 
 

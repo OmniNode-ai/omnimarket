@@ -117,7 +117,6 @@ from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup impor
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
-    ModelProvider,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
     ModelModelTestResult,
@@ -912,6 +911,10 @@ def add_model(
 ) -> None:
     """Store PROVIDER's key, then test it with one delegation pinned to it.
 
+    PROVIDER is gemini, openai, openrouter, reflection, anthropic, zai, local,
+    openai_compatible or the id of an OpenAI-API provider on the models.dev
+    list, such as deepseek, added with its own key, sent only to onex's base URL for it.
+
     The key is read from stdin when piped, or asked for at a hidden prompt. A key
     already stored for PROVIDER is replaced, with the models named here as its ordered
     list. The test passes only when it answers on the first model stored for the key.
@@ -1047,9 +1050,7 @@ def default_model(provider: str) -> None:
     if name not in OVERLAY_DEFAULT_PROVIDERS:
         click.echo(_listed_default_model(name))
         return
-    request = ModelModelSetupRequest(
-        operation="default_model", provider=cast(ModelProvider, name)
-    )
+    request = ModelModelSetupRequest(operation="default_model", provider=name)
     try:
         result = _model_handler().handle(request)
     except ModelSetupRefusedError as refusal:
@@ -1107,7 +1108,7 @@ def remove_model(
             handler,
             ModelModelSetupRequest(
                 operation="remove_model",
-                provider=cast(ModelProvider, name),
+                provider=name,
                 models=model_options,
                 url=url,
             ),

@@ -202,9 +202,7 @@ def _models_dev_declares_free(
     )
 
     provider = byok_backend_provider(backend_id)
-    if provider is None or not model_catalog.catalog_config()["provider_ids"].get(
-        provider
-    ):
+    if provider is None or model_catalog.models_dev_provider_id(provider) is None:
         return False
     return models_dev_historical_read.models_dev_declares_free(
         models_dev(), provider, model

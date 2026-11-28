@@ -26,7 +26,11 @@ from textual.pilot import Pilot
 from textual.widgets import Input
 
 from omnimarket.nodes.node_onex_setup_effect import cli_tui
-from omnimarket.nodes.node_onex_setup_effect.cli_tui import OnexTui, SetupScreen
+from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
+    OnexTui,
+    ProvidersScreen,
+    SetupScreen,
+)
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
     _app,
     _open_config,
@@ -102,10 +106,16 @@ async def test_typing_after_a_tab_swap_raced_esc_keeps_the_tui_running(
         await _swap_closed_by_esc(app, pilot, monkeypatch)
         assert app.is_running
         assert len(app.screen_stack) >= 2  # the main screen is still under a tab
-        for _ in range(3):  # Model -> Delegation -> Dashboard -> Config
+        for _ in range(4):  # round the tabs to Config
+            if isinstance(app.screen, ProvidersScreen):
+                break
             await pilot.press("tab")
             for _ in range(3):
                 await pilot.pause()
+        assert isinstance(app.screen, ProvidersScreen)
+        await app.open_add_models()  # adding models again (OMN-26688)
+        for _ in range(3):
+            await pilot.pause()
         assert isinstance(app.screen, SetupScreen)
         widget = await _focus_field(app, pilot, field)
         await pilot.press("a")
@@ -113,30 +123,6 @@ async def test_typing_after_a_tab_swap_raced_esc_keeps_the_tui_running(
         assert app.is_running
         assert widget.value.endswith("a")
         assert app.default_screen.query("#palette")  # the main screen kept it
-
-
-@pytest.mark.parametrize("field", _FIELDS)
-async def test_typing_in_key_and_url_starts_the_model_search(
-    field: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """S1/S2: one character still schedules the search, which then runs."""
-    runs: list[str] = []
-    real = SetupScreen._auto_find
-
-    def spy(self: SetupScreen) -> None:
-        runs.append(field)
-        real(self)
-
-    monkeypatch.setattr(SetupScreen, "_auto_find", spy)
-    app = _app(_Runner([]))
-    async with app.run_test(size=(140, 44)) as pilot:
-        await _open_config(pilot, app)
-        await _focus_field(app, pilot, field)
-        await pilot.pause(1.5)  # let the searches the setup itself started run
-        runs.clear()
-        await pilot.press("a")
-        await pilot.pause(1.5)  # auto_find_seconds is 0.8
-        assert runs == [field]
 
 
 async def test_the_palette_still_opens_from_the_main_prompt_after_a_raced_swap(

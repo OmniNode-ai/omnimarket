@@ -172,6 +172,10 @@ def models_request_headers(
         headers[backend.workspace_header] = workspace_id
     if backend.models_auth == "x_api_key":
         headers["x-api-key"] = secret
+    elif backend.models_auth == "x_goog_api_key":
+        # Google's native list: the key in x-goog-api-key, never in the URL
+        # (a fake key there answered 400 API_KEY_INVALID, none 403, 2026-11-26).
+        headers["x-goog-api-key"] = secret
     else:
         headers["Authorization"] = f"Bearer {secret}"
     return headers

@@ -15,13 +15,14 @@ import json
 
 import pytest
 from textual.pilot import Pilot
-from textual.widgets import RadioButton
 
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     DelegationScreen,
+    KeyScreen,
     ModelPickScreen,
     ModelTuiStatus,
     OnexTui,
+    ProvidersScreen,
     SetupScreen,
 )
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
@@ -94,23 +95,25 @@ async def test_a_typed_key_never_reaches_the_screen_or_the_pane() -> None:
     async with app.run_test(size=(80, 24)) as pilot:
         await _type(pilot, "/config")
         await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, SetupScreen)
-        # /config opens on the search line; the list is below it.
-        await _focus(pilot, app, "provider", key="down")
+        for _ in range(4):
+            await pilot.pause()
+        assert isinstance(app.screen, ProvidersScreen)
+        # OMN-26688: /config opens on the providers table; Down to OpenRouter,
+        # Enter asks for its key in a window, Enter there opens its models.
+        table = app.screen.query_one("#providers")
+        assert app.focused is table
+        names = [str(key.value) for key in table.rows]
+        await pilot.press(*["down"] * names.index("openrouter"))
         await pilot.press("enter")
-        await pilot.pause()
-        # Down from the marked provider to OpenRouter in the order shown
-        # (set-up first, then A-Z); the list wraps.
-        choice = app.screen.query_one("#provider")
-        names = [b.name for b in choice.query(RadioButton)]
-        steps = (names.index("openrouter") - names.index(choice.value)) % len(names)
-        await pilot.press(*["down"] * steps)
-        await pilot.press("enter")
-        await pilot.pause()
-        assert app.screen.query_one("#provider").value == "openrouter"
-        await _focus(pilot, app, "key")
+        for _ in range(4):
+            await pilot.pause()
+        assert isinstance(app.screen, KeyScreen)
         await _type(pilot, _SENTINEL)
+        await pilot.press("enter")
+        for _ in range(6):
+            await pilot.pause()
+        assert isinstance(app.screen, SetupScreen)
+        assert app.screen.query_one("#provider").value == "openrouter"
         await _wait_for_models(pilot)
         assert app.focused is not None
         assert app.focused.id == "mt-rows"  # the list takes the keyboard on load
@@ -143,7 +146,7 @@ async def test_every_shortcut_opens_and_closes_by_keyboard_at_80_by_24() -> None
     app = _app(_Runner([], by_command={("models", "list"): rows}))
     async with app.run_test(size=(80, 24)) as pilot:
         for command, screen in (
-            ("/config", SetupScreen),
+            ("/config", ProvidersScreen),
             ("/model", ModelPickScreen),
             ("/delegation", DelegationScreen),
         ):

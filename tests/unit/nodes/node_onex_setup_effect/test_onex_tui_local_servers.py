@@ -21,6 +21,7 @@ import time
 import pytest
 from textual.widgets import DataTable, Static
 
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
 from omnimarket.nodes.node_onex_setup_effect.cli_model_table import entry_key
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
@@ -92,10 +93,16 @@ def _app(runner: _Runner) -> OnexTui:
 
 
 async def _open(pilot, command: str) -> None:
-    await _type(pilot, command)
+    """A tab; "/config" here means adding models, now the Model tab's +
+    (OMN-26688)."""
+    await _type(pilot, "/model" if command == "/config" else command)
     await pilot.press("enter")
     await pilot.pause()
     await pilot.pause()
+    if command == "/config":
+        await pilot.app.open_add_models()
+        for _ in range(6):
+            await pilot.pause()
 
 
 async def test_model_opens_with_one_row_per_server_and_each_its_own_test() -> None:
@@ -119,7 +126,8 @@ async def test_model_opens_with_one_row_per_server_and_each_its_own_test() -> No
 
 
 async def test_config_and_delegation_open_with_two_servers_of_one_model() -> None:
-    """FM1 on the other two screens that show the same table."""
+    """FM1: two servers of one model open /delegation, which lists the agents
+    and no models table since OMN-26688 (the Model tab's FM1 test has them)."""
     runner = _Runner(
         [],
         by_command={
@@ -131,7 +139,8 @@ async def test_config_and_delegation_open_with_two_servers_of_one_model() -> Non
     async with app.run_test(size=(160, 44)) as pilot:
         await _open(pilot, "/delegation")
         assert isinstance(app.screen, DelegationScreen)
-        assert app.screen.query_one("#selected").query_one(DataTable).row_count == 3
+        assert len(app.screen.query(".agent-name")) == 20
+        assert list(app.screen.query("ModelTable")) == []
 
 
 async def test_picking_the_second_server_sends_its_url() -> None:
@@ -265,8 +274,9 @@ async def test_config_shows_what_is_set_up_and_offers_the_users_own_server() -> 
         assert "3 models · 3 servers" in summary
 
 
-async def test_delegation_table_names_each_selected_server() -> None:
-    """S3: hook delegation includes each selected server."""
+async def test_the_model_table_names_each_selected_server() -> None:
+    """S3: each selected server is named, on the Model tab since the
+    Delegation tab lost its models table (OMN-26688)."""
     from textual.widgets import DataTable
 
     runner = _Runner(
@@ -286,8 +296,8 @@ async def test_delegation_table_names_each_selected_server() -> None:
 
     app = OnexTui(root=_root, runner=runner, load_status=_status, read_server=native)
     async with app.run_test(size=(170, 46)) as pilot:
-        await _open(pilot, "/delegation")
-        table = app.screen.query_one("#selected").query_one(DataTable)
+        await _open(pilot, "/model")
+        table = app.screen.query_one("#models").query_one(DataTable)
         rows = [
             " ".join(str(cell) for cell in table.get_row_at(i))
             for i in range(table.row_count)
@@ -348,14 +358,16 @@ async def test_config_lists_providers_in_yaml_order_and_fills_no_url() -> None:
     async with app.run_test(size=(170, 46)) as pilot:
         await _open(pilot, "/config")
         assert isinstance(app.screen, SetupScreen)
-        picker = setup_provider_traits().picker
-        # Nothing is set up, so the list is A-Z (operator 2026-11-26).
-        a_to_z = sorted(picker, key=lambda e: e.label.casefold())
-        select = app.screen.query_one("#provider")  # radio options (OMN-23413)
-        assert select.value == a_to_z[0].provider
-        assert [b.name for b in select.query(RadioButton)] == [
-            entry.provider for entry in a_to_z
+        # Only the providers written from official docs (OMN-26688 T15).
+        picker = [  # less a provider its feature flag keeps off
+            e
+            for e in setup_provider_traits().picker
+            if provider_turned_off(e.provider) is None
         ]
+        select = app.screen.query_one("#provider")  # radio options (OMN-23413)
+        assert {b.name for b in select.query(RadioButton)} == {
+            entry.provider for entry in picker
+        }
         assert picker[-1].provider == "local"
         select.value = "local"
         await pilot.pause()
@@ -498,7 +510,6 @@ async def test_saving_delegation_keeps_delegation_open_and_shows_the_outcome() -
 
 async def test_saving_config_keeps_config_open_and_shows_the_outcome() -> None:
     """W5."""
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
 
     found = json.dumps({"status": "ready", "models": ["llama3.2"]})
     report = json.dumps(
@@ -520,17 +531,19 @@ async def test_saving_config_keeps_config_open_and_shows_the_outcome() -> None:
         table = app.screen.query_one("#found")
         table.set_ticked([entry_key(e) for e in table.entries])
         await pilot.press("ctrl+s")
-        await _settle(pilot)
-        assert isinstance(app.screen, SetupScreen)
+        await _settle(pilot, 20)
+        # OMN-26688: saved and tested, the Model tab shows your models.
+        assert type(app.screen).__name__ == "ModelPickScreen"
         assert [c for c in runner.calls if c[:2] == ("models", "add")]
-        assert "Ready" in str(app.screen.query_one("#note").render())
 
 
 async def test_clicking_another_tab_never_shows_the_main_screen() -> None:
     """T1: the next tab is read while this one stays up, then swapped in."""
     from textual.widgets import Tabs
 
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
+        ProvidersScreen,
+    )
 
     runner = _Slow([], by_command={("models", "list"): _rows()})
     app = _app(runner)
@@ -553,9 +566,9 @@ async def test_clicking_another_tab_never_shows_the_main_screen() -> None:
         for _ in range(40):
             await pilot.pause(0.05)
             assert len(app.screen_stack) >= 2, "the main screen showed"
-            if isinstance(app.screen, SetupScreen):
+            if isinstance(app.screen, ProvidersScreen):
                 break
-        assert isinstance(app.screen, SetupScreen)
+        assert isinstance(app.screen, ProvidersScreen)
         assert len(app.screen_stack) == 2  # swapped, not stacked
 
 
@@ -610,7 +623,7 @@ async def test_a_tab_opens_from_the_last_read_setup_before_reading_again() -> No
         await pilot.press("tab")
         await pilot.pause(0.1)  # well inside the 0.3 s a read takes
         assert isinstance(app.screen, DelegationScreen)
-        assert app.screen.query_one("#selected").query_one(DataTable).row_count == 3
+        assert len(app.screen.query(".agent-name")) == 20
         await pilot.pause(0.5)
         assert runner.calls.count(("models", "list", "--json")) == reads + 1
 
@@ -880,7 +893,6 @@ def _record_toasts(
 
 async def test_saving_a_model_pops_up_done(monkeypatch: pytest.MonkeyPatch) -> None:
     """X1."""
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
 
     found = json.dumps({"status": "ready", "models": ["llama3.2"]})
     report = json.dumps(
@@ -903,8 +915,8 @@ async def test_saving_a_model_pops_up_done(monkeypatch: pytest.MonkeyPatch) -> N
         table = app.screen.query_one("#found")
         table.set_ticked([entry_key(e) for e in table.entries])
         await pilot.press("ctrl+s")
-        await _settle(pilot)
-        assert isinstance(app.screen, SetupScreen)
+        await _settle(pilot, 20)
+        assert type(app.screen).__name__ == "ModelPickScreen"  # OMN-26688
         done = [t for t in toasts if t[0] == "Done"]
         assert done
         assert done[-1][1] == "information"
@@ -929,25 +941,6 @@ async def test_a_failed_remove_pops_up_failed_with_the_reason(
         assert failed
         assert failed[-1][1] == "error"
         assert reason in failed[-1][2]
-
-
-async def test_adding_on_config_pops_up_added(monkeypatch: pytest.MonkeyPatch) -> None:
-    """X3."""
-    found = json.dumps({"status": "ready", "models": ["llama3.2"]})
-    runner = _Runner(
-        [], by_command={("models", "list"): _rows(), ("models", "discover"): found}
-    )
-    app = _app(runner)
-    toasts = _record_toasts(app, monkeypatch)
-    async with app.run_test(size=(170, 46)) as pilot:
-        await _open(pilot, "/config")
-        app.screen.query_one("#provider").value = "local"
-        await _wait_for_models(pilot)
-        table = app.screen.query_one("#found")
-        table.set_ticked([entry_key(e) for e in table.entries])
-        app.screen.query_one("#add").press()
-        await _settle(pilot)
-        assert [t for t in toasts if t[0] == "Added"]
 
 
 async def test_a_failed_save_keeps_the_chosen_models_for_a_retry() -> None:

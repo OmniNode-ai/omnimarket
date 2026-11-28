@@ -53,8 +53,8 @@ from omnimarket.events.provider_quota import (
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.handlers.model_catalog import (
     SHIPPED_PRICE_SOURCE,
-    catalog_config,
     models_dev_price_with_read_time,
+    models_dev_provider_id,
     runtime_catalog_entry,
 )
 from omnimarket.handlers.routing.byok_model_discovery import (
@@ -71,6 +71,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_backend_by_endpoint,
     token_limit_field_for_endpoint,
 )
+from omnimarket.handlers.routing.provider_client_headers import client_headers
 from omnimarket.handlers.routing.routing_tiers_path import (
     load_delegation_routing_overlay,
 )
@@ -1165,7 +1166,7 @@ class HandlerLlmDelegationCall:
             # transport failure), never a silent unauthenticated call.
             outbound_headers, secret_source = self._resolve_outbound_headers(request)
             provider = byok_backend_provider(request.provider)
-            if provider is not None and provider in catalog_config()["provider_ids"]:
+            if provider is not None and models_dev_provider_id(provider) is not None:
                 # What the explorer last read and the price list kept or shipped
                 # on this machine: never a live listing per call, and no read of
                 # models.dev from inside a session.
@@ -1925,7 +1926,12 @@ class HandlerLlmDelegationCall:
             return anthropic_messages.native_headers(
                 request, None if api_key is None else api_key.get_secret_value()
             ), source
-        headers = {**request.extra_headers, **request.provider_headers}
+        headers = {
+            **request.extra_headers,
+            **request.provider_headers,
+            # OMN-26688: what the provider's docs ask every client to send.
+            **client_headers(request.endpoint_ref, request.correlation_id),
+        }
         if api_key is not None:
             headers["Authorization"] = f"Bearer {api_key.get_secret_value()}"
         return headers, source

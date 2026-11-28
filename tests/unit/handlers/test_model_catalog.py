@@ -533,12 +533,26 @@ def test_the_literal_scan_catches_a_planted_word(tmp_path: Path) -> None:
 
 
 def test_every_hosted_provider_config_offers_and_only_those_get_models_dev() -> None:
-    """One provider list: /config's five (setup_provider_traits.yaml) decide it."""
+    """One provider list: /config's hand-written providers (setup_provider_traits.yaml)
+    decide the map; a listed models.dev provider (OMN-26688) is found by its own
+    id, so it needs no map row."""
+    from omnimarket.handlers.model_catalog import models_dev_provider_id
+    from omnimarket.handlers.routing.byok_catalog_providers import (
+        load_byok_catalog_providers,
+    )
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import _hosted, _picker
+    from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+        setup_provider_traits,
+    )
 
-    offered = {entry.provider for entry in _picker()}
-    hosted = {provider for provider in offered if _hosted(provider)}
+    written = {entry.provider for entry in setup_provider_traits().picker}
+    hosted = {provider for provider in written if _hosted(provider)}
     assert set(catalog_config()["provider_ids"]) == hosted
+    listed = load_byok_catalog_providers()
+    offered = {entry.provider for entry in _picker()}
+    assert offered - written <= set(listed)
+    for provider in offered - written:
+        assert models_dev_provider_id(provider) == provider, provider
 
 
 def _listing(outcome: ListingOutcome = "listed") -> ModelByokModelListing:

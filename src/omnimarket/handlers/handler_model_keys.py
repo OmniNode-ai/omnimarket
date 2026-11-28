@@ -28,12 +28,13 @@ from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.handlers.model_provider_labels import MODEL_LABELS
+from omnimarket.handlers.routing import byok_catalog_providers as catalog
 from omnimarket.handlers.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
@@ -121,6 +122,7 @@ KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
     "reflection",
     "anthropic",
     "glm",
+    "hopscotch",
     "openai_compatible",
 )
 
@@ -592,7 +594,7 @@ def store_key(
     except LocalSecretStoreRefusedError as refusal:
         raise ModelKeyRefusedError(str(refusal)) from None
     echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
-    if provider in PROVIDERS:
+    if provider is not None and catalog.is_keyed(provider, PROVIDERS):
         # OMN-21259: a new key starts untested; the old key's failed test
         # must not keep it out of routing.
         model_handler().handle(
@@ -621,9 +623,9 @@ def _keyed_provider_of(secret_ref: str) -> ModelProvider | None:
     """
     declared = _offered_provider(secret_ref)
     if declared is not None:
-        return next((p for p in KEYED_PROVIDERS if p == declared), None)
+        return str(declared) if catalog.is_keyed(declared, KEYED_PROVIDERS) else None
     db_path = LocalByokCredentialStore().db_path
-    for provider in KEYED_PROVIDERS:
+    for provider in catalog.keyed_providers(KEYED_PROVIDERS, db_path):
         if secret_ref == resolve_local_byok_credential_ref(provider, db_path=db_path):
             return provider
     return None
@@ -699,13 +701,12 @@ def add_key(
 ) -> ModelModelTestResult:
     """Store ``provider``'s key with its chosen models, then run its one pinned test.
 
-    A key already stored for the provider is replaced, with ``models`` as its
-    ordered list; each is checked against the provider's list for this key
-    before anything is stored. With no model named, a terminal is asked
-    (``ask_model``) and any other caller is refused (OMN-21059). The test is
-    recorded and returned whether it passed or failed: the key stays stored
-    either way, as ``onex models add`` has always left it.
+    A stored key is replaced, with ``models`` as its ordered list.
+    Each model is checked against this key's provider list first.
+    Without a model, a terminal is asked (``ask_model``); others refused.
+    The test is recorded and returned, passed or failed; the key stays.
     """
+    catalog.refuse_turned_off(provider, ModelKeyRefusedError)  # OMN-26688
     # Credentials-page updates an earlier change could not apply go first, in order.
     drain_pending_credential_events(LocalByokCredentialStore().db_path)
     if len(set(models)) != len(models):
@@ -729,7 +730,7 @@ def add_key(
             listed = handler.handle(
                 ModelModelSetupRequest(
                     operation="add_models",
-                    provider=cast(ModelProvider, provider),
+                    provider=provider,
                     models=tuple(models[1:]),
                 )
             )
@@ -780,11 +781,10 @@ def refuse_last_usable(provider: str) -> None:
 def remove_key(provider: str, echo: Echo = _quiet) -> None:
     """Delete ``provider``'s stored key, unless it is the last usable model.
 
-    Keys only: a Local Model is removed in the terminal, as
-    before, and the guard does not cover them.
+    Keys only; a Local Model is removed in the terminal, and the guard excludes it.
     """
     handler = model_handler()
-    if provider not in KEYED_PROVIDERS:
+    if not catalog.is_keyed(provider, KEYED_PROVIDERS):
         raise ModelKeyRefusedError(
             f"{MODEL_LABELS.get(provider, provider)} has no key to remove."
         )

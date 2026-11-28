@@ -1,0 +1,466 @@
+{
+ "object": "list",
+ "data": [
+  {
+   "id": "big-pickle",
+   "object": "model",
+   "created": 1795706505,
+   "owned_by": "opencode",
+   "name": "Big Pickle",
+   "type": "chat",
+   "description": "Reasoning model for deliberate analysis, multi-step problem solving, and tool use",
+   "family": "big-pickle",
+   "open_weights": false,
+   "knowledge": "2025-01",
+   "release_date": "2025-10-17",
+   "last_updated": "2025-10-17",
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true
+    },
+    "structured_output": true,
+    "temperature": true,
+    "system_updates": false,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 200000,
+    "input": 160000,
+    "output": 32000
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "output": {
+      "price": 0
+     }
+    }
+   },
+   "api": {
+    "chat-completions": {
+     "base_url": "https://opencode.ai/inference/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai-compatible",
+      "opencodeai": "@opencode/ai/providers/openai-compatible"
+     },
+     "compatibility": {
+      "reasoning_field": "reasoning_content"
+     },
+     "capabilities": {
+      "tools": {
+       "updates": []
+      }
+     }
+    }
+   },
+   "recommended_api": "chat-completions"
+  },
+  {
+   "id": "claude-sonnet-5-5",
+   "object": "model",
+   "created": 1795706505,
+   "owned_by": "opencode",
+   "name": "Claude Sonnet 5.5",
+   "canonical_id": "anthropic/claude-sonnet-5-5",
+   "type": "chat",
+   "description": "Fast Claude model for everyday coding, agents, and knowledge work",
+   "family": "claude-sonnet",
+   "open_weights": false,
+   "knowledge": "2026-06",
+   "release_date": "2026-09-28",
+   "last_updated": "2026-09-28",
+   "modalities": {
+    "input": [
+     "text",
+     "image/jpeg",
+     "image/png",
+     "image/gif",
+     "image/webp",
+     "application/pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "effort": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ]
+    },
+    "cache": {
+     "explicit": {
+      "ttl": [
+       "5m",
+       "1h"
+      ],
+      "max_breakpoints": 4,
+      "targets": [
+       "tools",
+       "system",
+       "messages"
+      ],
+      "min_tokens": 512
+     }
+    },
+    "temperature": false,
+    "top_p": false,
+    "top_k": false,
+    "system_updates": true,
+    "effort_updates": true
+   },
+   "limit": {
+    "context": 1000000,
+    "output": 128000
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 2,
+      "cache": {
+       "read": 0.1,
+       "write": 2.5
+      }
+     },
+     "output": {
+      "price": 10
+     }
+    }
+   },
+   "api": {
+    "messages": {
+     "base_url": "https://opencode.ai/inference/anthropic/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/anthropic",
+      "opencodeai": "@opencode/ai/providers/anthropic"
+     },
+     "capabilities": {
+      "tools": {
+       "strict": true,
+       "choice": [
+        "auto",
+        "none"
+       ],
+       "search": true,
+       "updates": [
+        "add",
+        "remove",
+        "replace"
+       ]
+      }
+     }
+    }
+   },
+   "recommended_api": "messages"
+  },
+  {
+   "id": "deepseek-v4-pro",
+   "object": "model",
+   "created": 1795706505,
+   "owned_by": "opencode",
+   "name": "DeepSeek V4 Pro",
+   "canonical_id": "deepseek/deepseek-v4-pro",
+   "type": "chat",
+   "description": "Open MoE flagship with million-token context for coding and long agent runs",
+   "family": "deepseek-pro",
+   "open_weights": true,
+   "knowledge": "2025-05",
+   "release_date": "2026-04-24",
+   "last_updated": "2026-04-24",
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "toggle": true,
+     "effort": [
+      "high",
+      "max"
+     ]
+    },
+    "cache": {
+     "implicit": true
+    },
+    "structured_output": true,
+    "temperature": true,
+    "top_p": true,
+    "top_k": true,
+    "system_updates": true,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 1000000,
+    "output": 384000
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 1.74,
+      "cache": {
+       "read": 0.145
+      }
+     },
+     "output": {
+      "price": 3.48
+     }
+    }
+   },
+   "api": {
+    "chat-completions": {
+     "base_url": "https://opencode.ai/inference/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai-compatible",
+      "opencodeai": "@opencode/ai/providers/openai-compatible"
+     },
+     "compatibility": {
+      "reasoning_field": "reasoning_content"
+     },
+     "capabilities": {
+      "tools": {
+       "choice": [
+        "auto",
+        "none",
+        "required",
+        "tool"
+       ],
+       "updates": []
+      }
+     }
+    }
+   },
+   "recommended_api": "chat-completions"
+  },
+  {
+   "id": "text-embedding-3-small",
+   "object": "model",
+   "created": 1795706505,
+   "owned_by": "opencode",
+   "name": "text-embedding-3-small",
+   "type": "embedding",
+   "canonical_id": "openai/text-embedding-3-small",
+   "description": "Small, efficient OpenAI text embedding model",
+   "family": "text-embedding",
+   "open_weights": false,
+   "release_date": "2024-01-25",
+   "last_updated": "2024-01-25",
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "embedding"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": false
+    },
+    "reasoning": {
+     "supported": false
+    },
+    "temperature": false,
+    "top_p": false,
+    "top_k": false,
+    "system_updates": false,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 8192,
+    "output": 0
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 0.02
+     },
+     "output": {
+      "price": 0
+     }
+    }
+   },
+   "api": {
+    "embeddings": {
+     "base_url": "https://opencode.ai/inference/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai",
+      "opencodeai": "@opencode/ai/providers/openai/embeddings"
+     }
+    }
+   },
+   "recommended_api": "embeddings"
+  },
+  {
+   "id": "gpt-image-2.5-sunburst",
+   "object": "model",
+   "created": 1795706505,
+   "owned_by": "opencode",
+   "name": "GPT Image 2.5 Sunburst",
+   "canonical_id": "openai/gpt-image-2.5-sunburst",
+   "type": "image",
+   "description": "Image model for prompt-driven generation, editing, and visual design workflows",
+   "family": "gpt-image",
+   "open_weights": false,
+   "release_date": "2026-09-08",
+   "last_updated": "2026-09-08",
+   "modalities": {
+    "input": [
+     "text",
+     "image/jpeg",
+     "image/png",
+     "image/webp"
+    ],
+    "output": [
+     "image/png",
+     "image/jpeg",
+     "image/webp"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": false
+    },
+    "reasoning": {
+     "supported": false
+    },
+    "temperature": false,
+    "top_p": false,
+    "top_k": false,
+    "system_updates": false,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 0,
+    "output": 0
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 8
+     },
+     "output": {
+      "price": 30
+     }
+    },
+    "image": {
+     "input": {
+      "price": 8
+     },
+     "output": {
+      "unit": "image",
+      "price": 1
+     }
+    }
+   },
+   "api": {
+    "images": {
+     "base_url": "https://opencode.ai/inference/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai",
+      "opencodeai": "@opencode/ai/providers/openai/images"
+     }
+    }
+   },
+   "recommended_api": "images"
+  },
+  {
+   "id": "gpt-live-1",
+   "object": "model",
+   "created": 1795706505,
+   "owned_by": "opencode",
+   "name": "GPT-Live 1",
+   "canonical_id": "openai/gpt-live-1",
+   "type": "realtime",
+   "description": "Full-duplex voice model for natural conversations that delegates reasoning and tools to a backend agent",
+   "family": "gpt-live",
+   "open_weights": false,
+   "knowledge": "2025-07-31",
+   "release_date": "2026-09-10",
+   "last_updated": "2026-09-10",
+   "modalities": {
+    "input": [
+     "text",
+     "audio/pcm",
+     "audio/pcmu",
+     "audio/pcma"
+    ],
+    "output": [
+     "text",
+     "audio/pcm",
+     "audio/pcmu",
+     "audio/pcma"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": false
+    },
+    "temperature": false,
+    "top_p": false,
+    "top_k": false,
+    "system_updates": false,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 0,
+    "output": 0
+   },
+   "cost": {
+    "audio": {
+     "input": {
+      "unit": "minute",
+      "price": 0.05
+     }
+    }
+   },
+   "api": {
+    "live": {
+     "base_url": "https://opencode.ai/inference/openai/v1",
+     "sdk": {},
+     "capabilities": {
+      "tools": {
+       "updates": []
+      }
+     }
+    }
+   },
+   "recommended_api": "live"
+  }
+ ]
+}

@@ -54,6 +54,12 @@ def stored_key_for_unchanged_provider(
         )
     ):
         return None
+    return stored_key(provider)
+
+
+def stored_key(provider: str) -> SecretStr | None:
+    """The key saved for ``provider``, read without writing: the store is never
+    created, migrated or chmodded, and anything unreadable means no key."""
     try:
         ref = _stored_ref(setup_provider_traits().key_name(provider))
         if ref is None:

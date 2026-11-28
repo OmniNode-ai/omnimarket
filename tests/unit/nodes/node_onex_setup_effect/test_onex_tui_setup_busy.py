@@ -16,7 +16,6 @@ import pytest
 
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
     _app,
-    _press,
     _Runner,
     _selected_rows,
     _type,
@@ -43,7 +42,7 @@ async def _save_note(errors: str) -> str:
         await pilot.pause()
         await pilot.pause()
         app.screen.set_all(True)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         for _ in range(6):
             await pilot.pause()
         return " ".join(str(app.screen.query_one("#dnote").render()).split())

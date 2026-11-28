@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
-import stat
 from pathlib import Path
 from typing import Literal
 
@@ -56,6 +54,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_step_request imp
 from omnimarket.nodes.node_onex_setup_effect.protocols.protocol_setup_step import (
     SetupStepRefusedError,
 )
+from omnimarket.nodes.node_onex_setup_effect.setup_file_read import _read
 
 _Step = Literal["workspace", "user_config", "runtime_config", "identity", "models"]
 
@@ -65,23 +64,6 @@ MODELS_SKIPPED_NOTICE = (
     "no local model server configured; bring your own key or use the cloud route. "
     "Add a local model later with: onex models add local --url <base url> --model <name>"
 )
-
-
-def _read(path: Path) -> str | None:
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    except FileNotFoundError:
-        return None
-    except OSError:
-        raise ValueError("Expected a bounded regular setup file") from None
-    with os.fdopen(fd, "rb") as source:
-        info = os.fstat(source.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_size > 1024 * 1024:
-            raise ValueError("Expected a bounded regular setup file")
-        raw = source.read(1024 * 1024 + 1)
-    if len(raw) > 1024 * 1024:
-        raise ValueError("Expected a bounded regular setup file")
-    return raw.decode()
 
 
 def _owned_runtime_config(plan: ModelSetupPlan) -> str | None:

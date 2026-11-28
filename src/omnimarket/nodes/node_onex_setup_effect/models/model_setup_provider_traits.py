@@ -39,14 +39,41 @@ class ModelSetupProviderTraits(BaseModel):
         return provider in self.url_required
 
     def picker_providers(self) -> tuple[ModelSetupPickerProvider, ...]:
-        """The /config choices, in the order setup_provider_traits.yaml lists them."""
-        return self.picker
+        """The /config choices: setup_provider_traits.yaml's in its order, then each
+        provider on the shipped models.dev list (OMN-26688)."""
+        declared = {p.provider for p in self.picker}
+        listed = tuple(p for p in _listed_picker() if p.provider not in declared)
+        # A server the user runs (Local Model) stays the last entry (operator
+        # 2026-11-13); the list's hosted providers go before it.
+        hosted = tuple(p for p in self.picker if p.provider not in self.url_required)
+        servers = tuple(p for p in self.picker if p.provider in self.url_required)
+        return (*hosted, *listed, *servers)
 
     def registration(self, provider: str, *, keyed: bool) -> str:
         """The canonical endpoint owner a selection registers as."""
         return self.registers_as.get(provider, {}).get(
             "keyed" if keyed else "keyless", provider
         )
+
+
+@cache
+def _listed_picker() -> tuple[ModelSetupPickerProvider, ...]:
+    from omnimarket.handlers.routing.byok_catalog_providers import (
+        load_byok_catalog_providers,
+    )
+
+    return tuple(
+        ModelSetupPickerProvider(
+            provider=listed.id,
+            label=listed.name,
+            hint=(
+                f"Create a key with {listed.name}; its docs are at {listed.doc}."
+                if listed.doc
+                else f"Create a key with {listed.name}."
+            ),
+        )
+        for listed in load_byok_catalog_providers().values()
+    )
 
 
 @cache

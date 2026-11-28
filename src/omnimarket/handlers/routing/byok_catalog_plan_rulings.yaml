@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# The coding and token plans a customer may add a key for (OMN-26688). Empty on
+# purpose: a plan is offered only once its provider's own official page allows its
+# API key in other tools. Each row needs the operator's approval, and a coding plan
+# also needs the OMN-20173 rule amended first. A row:
+#
+#   - provider: <models.dev provider id>
+#     doc_url: <the provider's own page the ruling rests on>
+#     quote: <the sentence on that page that allows it>
+#     read_on: <YYYY-MM-DD>
+schema_version: "byok_catalog_plan_rulings.v1"
+rulings: []

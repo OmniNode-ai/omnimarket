@@ -424,7 +424,7 @@ def test_register_tenant_key_anthropic_expires_reaches_the_catalog(
         *, url: str, extra_headers: dict[str, str], **_kwargs: Any
     ) -> dict[str, Any]:
         calls.append(url)
-        assert url == "https://api.anthropic.com/v1/models"
+        assert url == "https://api.anthropic.com/v1/models?limit=1000"
         assert extra_headers["x-api-key"] == _VALUE
         assert "Authorization" not in extra_headers
         return {"data": [{"id": "claude-haiku-5-5"}]}

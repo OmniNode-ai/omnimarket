@@ -287,6 +287,8 @@ model_table:
       # titles: name, Context, In $/1M, Out $/1M (operator 2026-11-26).
       order:
         header: true
+        # OMN-26688: column names above a line, striped rows, as /config.
+        ruled: true
         columns:
           # The position leads the name, as the Model tab's marker does.
           - {key: model_numbered, title: "  Model"}
@@ -318,7 +320,7 @@ model_table:
 
 # /delegation: one switch, the prompt hook; subagents always run on Claude (OMN-23413).
 delegation:
-  title: Claude Code delegation
+  title: Agent delegation
   table_title: Your selected models (from /config), in the order delegation tries them
   enable:
     - [delegation, "on", --json]
@@ -341,6 +343,30 @@ delegation:
   state_reading: "checking…"
   state_unread: "status could not be read"
   hooks_title: "Delegation runs through one hook in Claude Code; switching it off removes the hook."
+  # OMN-26688 (operator 2026-11-26): the agents onex delegates from, in the
+  # order of the operator's picture. Claude Code is live; the others'
+  # integration is in progress, so their switches send nothing yet.
+  agents:
+    - {key: claude_code, name: Claude Code, live: true}
+    - {key: codex, name: Codex CLI}
+    - {key: opencode, name: OpenCode}
+    - {key: pi, name: Pi}
+    - {key: cursor, name: Cursor CLI}
+    - {key: droid, name: Droid CLI}
+    - {key: hermes, name: Hermes Agent}
+    - {key: copilot, name: GitHub Copilot CLI}
+    - {key: antigravity, name: Google Antigravity CLI}
+    - {key: kilo, name: Kilo Code}
+    - {key: kiro, name: Kiro CLI}
+    - {key: goose, name: Goose}
+    - {key: cline, name: Cline CLI}
+    - {key: command_code, name: Command Code}
+    - {key: vibe, name: Mistral Vibe CLI}
+    - {key: kimi, name: Kimi Code CLI}
+    - {key: qwen, name: Qwen Code}
+    - {key: amp, name: Amp}
+    - {key: deepseek, name: DeepSeek Harness}
+    - {key: omp, name: "Oh My Pi (OMP)"}
   hooks:
     - key: prompt_hook
       label: Delegate prompts
@@ -354,9 +380,9 @@ delegation:
   hook_unread: not read
   hook_paused: paused
   # Save sends nothing from a state that was not read (review 2026-11-15).
-  save_reading: "Delegation's state is still being read, so Save changed nothing; save again once it shows."
-  save_unread: "Delegation's state could not be read, so Save changed nothing. Switch it on here, or run /delegation off to switch it off."
-  save_just_read: "Delegation's state was just read and is shown above; Save changed nothing."
+  save_reading: "Delegation's state is still being read, so nothing was switched; switch again once it shows."
+  save_unread: "Delegation's state could not be read, so nothing was switched. Switch it on here, or run /delegation off to switch it off."
+  save_just_read: "Delegation's state was just read and is shown above; nothing was switched."
   # OMN-23413, operator 2026-11-13: Claude Code is the user's own install; the
   # tab detects it with setup's read-only check and says so, and never installs it.
   claude_check: [delegation, status, --json]
@@ -504,6 +530,28 @@ words:
   themes_not_kept: "{theme} is on for now, but could not be saved for the next start."
   # Config tab (mockup page 4).
   add_title: Add models
+  add_models_title: "Add {provider} models"
+  providers_title: Providers
+  providers_empty: "No provider is set up yet. Choose one and press Enter to add its key."
+  col_provider: Provider
+  col_status: Status
+  status_not_set_up: not set up
+  view_configured: "Configured {count}"
+  view_available: "Available {count}"
+  key_add_title: "Add {provider}"
+  key_change_title: "Change the {provider} key"
+  url_add_title: "Add {provider}"
+  button_continue: Continue
+  key_checking: "checking the key…"
+  key_unchecked: "could not check it just now; you can still continue"
+  models_available: "{count} models available"
+  key_not_yours: "{provider} is not set up yet: press Enter to add it"
+  key_saved_placeholder: "saved key in use · paste a new one to replace it"
+  saved_key_used: "reading {provider} models with your saved key"
+  ticked_count: "{count} ticked"
+  saved_key_title: "✓ saved key"
+  title_models: "{count} models"
+  saved_key_unread: "could not read the saved {provider} key: paste it to list its models"
   step_of: "step {step} of 3"
   provider_box: Provider
   # Provider list: search, then set-up first and A-Z (operator 2026-11-26).
@@ -515,7 +563,7 @@ words:
   mine_box: Your providers
   mine_title: Manage providers
   add_box: Add a provider
-  detail_ready: all tests passed
+  detail_ready: ready to use
   detail_failed: last test failed
   detail_untested: not tested yet
   detail_key: key stored
@@ -534,6 +582,17 @@ words:
   remove_question: "Remove {provider}? onex stops using its {models} and deletes its key or server from this machine. You can add it again any time."
   provider_removed: "{provider} removed"
   remove_provider_failed: "{provider} was not removed: {reason}"
+  # The card under the key box: the provider being added, from models.dev
+  # (operator 2026-11-26: "improve more").
+  card_count: "{count} models"
+  card_count_one: "1 model"
+  card_price_range: "{count} · {low} to {high} per 1M input tokens"
+  card_price_one: "{count} · {low} per 1M input tokens"
+  card_no_prices: "{count} · prices not listed on models.dev"
+  card_unknown: "Its models are read once your key is in."
+  card_newest: "Newest  {models}"
+  card_host: "Your key is sent only to {host}."
+  card_local: "Runs on a server you name by URL. Nothing is sent anywhere else."
   # Under the provider list (operator 2026-11-26: "show count too").
   provider_count: "{total} providers"
   provider_count_shown: "{shown} of {total}"
@@ -553,9 +612,23 @@ words:
   tried_first: "Tried first: {mark} {model}"
   tried_first_auto: "Tried first: {mark} Auto picks per task"
   # Delegation tab (mockup page 6).
-  delegation_about: "Prompts go to your models first. Claude Code is the fallback."
+  delegation_about: "Your agents. Your models. Your choice."
   turn_on: "Turn on"
   turn_off: "Turn off"
+  # OMN-26688: the Delegation tab's one toggle.
+  toggle_on: "ON"
+  toggle_off: "OFF"
+  toggle_switching: "switching…"
+  toggle_reading: "reading…"
+  toggle_unread: "not read"
+  toggle_hint_on: "space to turn off"
+  toggle_hint_off: "space to turn on"
+  agents_enabled: "{on}/{total} enabled"
+  agent_in_progress: "integration in progress"
+  # One mark on each agent in progress; its meaning is said once, at the bottom.
+  agent_in_progress_mark: "ⓘ"
+  agent_on_note: "{agent} is on · integration in progress: onex starts delegating from it when that lands."
+  agent_off_note: "{agent} is off."
   hook_label: Hook
   hook_state_installed: "✓ installed in Claude Code"
   hook_state_missing: "! not installed"
@@ -568,8 +641,10 @@ words:
   auto_button: "Use Auto (A)"
   dashboard_about: "A local web page with your tasks, cost and savings over time, in your browser."
   order_none: "No models yet. Run /config."
-  tab_hint_model: "↑↓ move · enter make first · d details · esc close"
-  tab_hint_delegation: "space switch · ctrl+s save · esc close"
+  tab_hint_config: "enter open · ←→ switch tab · k key · t test · x remove · esc close"
+  tab_hint_add_models: "space tick · ctrl+s save · esc back to providers"
+  tab_hint_model: "↑↓ move · enter first · + add · d info · esc close"
+  tab_hint_delegation: "↑↓ navigate · space toggle · esc close"
   tab_hint_dashboard_stopped: "s start · esc close"
   tab_hint_dashboard_running: "enter open · s stop · esc close"
   # The one line under the tabs: how many models, on how many servers, and the first.
@@ -615,6 +690,7 @@ words:
   guided_setup_done: "Guided setup finished."
   button_save: Save
   button_cancel: Cancel
+  button_close: Close
   button_start: Start
   button_open: Open
   button_stop: Stop
@@ -636,10 +712,10 @@ words:
   setup_busy: "another setup is still running (it may be installing Claude Code); wait for it to finish, then save again"
   claude_checking: "Claude Code: checking…"
   claude_ready: "Claude Code: ready"
-  claude_installed: "Claude Code: installed · Save adds the ONEX plugin and switches the hooks on"
-  claude_signed_out: "Claude Code: installed, not signed in · run claude and sign in, then save"
+  claude_installed: "Claude Code: installed · switching on adds the ONEX plugin and the hooks"
+  claude_signed_out: "Claude Code: installed, not signed in · run claude and sign in, then switch on"
   claude_missing: "Claude Code is not installed. Install it yourself from claude.com/claude-code, then switch delegation on here."
-  claude_unknown: "could not check Claude Code; Save will try and report what it finds"
+  claude_unknown: "could not check Claude Code; switching on will try and report what it finds"
   run_tokens: "{tokens} tokens"
   # Operator 2026-11-13: tokens in point down, tokens out point up.
   run_tokens_in_out: "↓{tokens_in} in · ↑{tokens_out} out"
@@ -753,6 +829,8 @@ themes:
     boost: "#00000008"
     border: "#b8b0a2"
     chip: "#e3ddd2"
+    toggle_on: "#c4e3b6"
+    toggle_off: "#cfc5b2"
     route_cheap: "#1b6f8a"
     route_fallback: "#8a6a00"
 

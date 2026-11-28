@@ -31,6 +31,7 @@ import click
 import pytest
 from textual.pilot import Pilot
 
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     ModelTuiStatus,
     OnexTui,
@@ -493,9 +494,15 @@ async def _open_config[T](
 ) -> None:
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
 
+    # Adding models is its own screen on the Model tab, opened from a
+    # provider on /config (OMN-26688); these tests drive what it does.
     await _type(pilot, command)
     await pilot.press("enter")
-    await pilot.pause()
+    for _ in range(4):
+        await pilot.pause()
+    await app.open_add_models()
+    for _ in range(6):
+        await pilot.pause()
     assert isinstance(app.screen, SetupScreen)
     # Nothing fills a server URL in (OMN-23413): pick Local Model and type one,
     # as a user does; a hosted test switches provider after this.
@@ -530,10 +537,7 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
         )
         assert [e.model_id for e in _found(app).entries] == ["llama3.2", "qwen3:8b"]
         _tick(app, "llama3.2", "qwen3:8b")
-        await pilot.press("ctrl+g")
-        await pilot.pause()
         assert runner.terminal_calls == []
-        assert "Save" in str(app.screen.query_one("#note").render())
         assert [e.model_id for e in _found(app).ticked] == ["llama3.2", "qwen3:8b"]
         await _press(pilot, app, "save")
         for _ in range(6):
@@ -629,11 +633,11 @@ async def test_config_takes_several_providers_and_keeps_keys_out_of_argv_and_log
         free = rows["openrouter/free"]
         assert free.output_usd_per_million is None  # not stated: never shown as free
         _tick(app, "qwen/qwen3.8-27b")
-        await _press(pilot, app, "add")
+        assert app.screen._add_current()  # as Save does, per provider
         screen.query_one("#provider").value = "local"
         await _wait_for_models(pilot)
         _tick(app, "llama3.2")
-        await _press(pilot, app, "add")
+        assert app.screen._add_current()  # as Save does, per provider
         basket = str(screen.query_one("#basket").render())
         assert "◈ qwen/qwen3.8-27b" in basket  # OMN-26620: no provider prefix
         assert "◈ llama3.2" in basket
@@ -679,7 +683,7 @@ async def test_a_long_list_is_searchable_and_ticks_survive_searching() -> None:
             "vendor/model-07",
             "qwen/qwen3.8-27b",
         ]
-        await _press(pilot, app, "add")
+        assert app.screen._add_current()  # as Save does, per provider
         assert "◈ vendor/model-07  ◈ qwen/qwen3.8-27b" in str(
             screen.query_one("#basket").render()
         )
@@ -814,7 +818,8 @@ def _selected_rows(*, connection: bool) -> dict[tuple[str, ...], str]:
 
 
 async def test_delegation_asks_for_nothing_and_shows_the_selected_models() -> None:
-    """F8: no URL, model or credential field; the table is the stored selection."""
+    """F8: no URL, model or credential field, and no models table: the Model
+    tab lists the stored selection (OMN-26688, operator 2026-11-26)."""
     from textual.widgets import Input
 
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import DelegationScreen
@@ -830,13 +835,7 @@ async def test_delegation_asks_for_nothing_and_shows_the_selected_models() -> No
         assert isinstance(screen, DelegationScreen)
         typed = [i.id for i in screen.query(Input) if i.id != "mt-search"]
         assert typed == []
-        table = screen.query_one("#selected")
-        shown = [(e.provider, e.model_id, e.status) for e in table.entries]
-        assert shown == [
-            ("openrouter", "qwen/qwen3.8-27b", "ready"),
-            ("ollama", "llama3.2", "untested"),
-        ]
-        assert table.entries[0].capabilities["Tools"] == "yes"  # same rows as /config
+        assert list(screen.query("ModelTable")) == []
 
 
 async def test_delegation_hook_mode_runs_the_design_commands_on_and_off() -> None:
@@ -853,7 +852,7 @@ async def test_delegation_hook_mode_runs_the_design_commands_on_and_off() -> Non
         await pilot.pause()
         await pilot.pause()
         app.screen.set_all(True)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         for _ in range(6):
             await pilot.pause()
         assert _actions(runner)[-len(hook.enable) :] == list(hook.enable)
@@ -862,7 +861,7 @@ async def test_delegation_hook_mode_runs_the_design_commands_on_and_off() -> Non
 
         # The tab stays open: switch off from the same screen.
         app.screen.set_all(False)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         for _ in range(6):
             await pilot.pause()
         assert _actions(runner)[-len(hook.disable) :] == list(hook.disable)
@@ -886,7 +885,7 @@ async def test_delegation_refuses_to_turn_on_with_no_selected_model() -> None:
         await pilot.pause()
         before = len(runner.calls)
         app.screen.set_all(True)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         await pilot.pause()
         assert isinstance(app.screen, DelegationScreen)
         assert tui_design().delegation.no_models in str(
@@ -1048,18 +1047,32 @@ def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
 
     traits = setup_provider_traits()
     choices = cli_tui._picker()
-    assert choices == traits.picker  # the file's order, not sorted
+    # The file's order, not sorted; only what it writes from official docs, no
+    # models.dev list (operator 2026-11-26, OMN-26688 T15).
+    assert choices == tuple(  # less a provider its feature flag keeps off
+        e for e in traits.picker if provider_turned_off(e.provider) is None
+    )
+    assert choices[-1].provider == "local"
     # One entry for every OpenAI-compatible server: no separate Ollama or vLLM.
-    assert [entry.provider for entry in choices] == [
-        "gemini",
-        "openai",
-        "openrouter",
-        "reflection",
-        # Operator 2026-11-26: more providers. setup already adds and lists
-        # both (onex models add anthropic|glm; each backend's models_url).
-        "anthropic",
-        "glm",
-        "local",
+    assert [e.provider for e in choices if e in traits.picker] == [
+        name
+        for name in [
+            "gemini",
+            "openai",
+            "openrouter",
+            "reflection",
+            # Operator 2026-11-26: more providers. setup already adds and lists
+            # both (onex models add anthropic|glm; each backend's models_url).
+            "anthropic",
+            "glm",
+            # Operator 2026-11-26, from its own docs (OMN-26688).
+            "hopscotch",
+            # Operator 2026-11-26, from its own docs (OMN-26688).
+            "opencode",
+            "opencode-go",
+            "local",
+        ]
+        if provider_turned_off("hopscotch") is None or name != "hopscotch"
     ]
     assert [e.provider for e in choices if not cli_tui._hosted(e.provider)] == ["local"]
     assert not hasattr(cli_tui, "_default_url")  # no made-up server URL
@@ -1096,14 +1109,14 @@ async def test_entering_a_key_loads_the_models_without_pressing_find() -> None:
 
 
 async def test_enter_on_a_partial_command_runs_the_highlighted_entry() -> None:
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import ProvidersScreen
 
     app = _app(_Runner([]))
     async with app.run_test(size=(120, 50)) as pilot:
         await _type(pilot, "/conf")
         await pilot.press("enter")
         await pilot.pause()
-        assert isinstance(app.screen, SetupScreen)
+        assert isinstance(app.screen, ProvidersScreen)
         assert "no onex command matches" not in _log_text(app)
 
 
@@ -1122,7 +1135,7 @@ async def test_every_model_is_listed_with_no_cap_and_any_number_can_be_ticked() 
         assert len(_found(app).entries) == 466
         _tick(app, *(e.model_id for e in _found(app).entries))
         await pilot.pause()
-        await _press(pilot, app, "add")
+        assert app.screen._add_current()  # as Save does, per provider
         basket = str(screen.query_one("#basket").render())
         assert basket.count("◈") == 466  # one mark per model
 
@@ -1231,13 +1244,13 @@ async def test_save_stays_on_screen_with_a_long_list_and_ctrl_s_saves(
         await pilot.pause()
         screen.query_one("#key").value = "sk-or-long-list"
         await _wait_for_models(pilot)
-        for button in ("add", "save", "cancel"):
+        for button in ("save", "cancel"):
             region = screen.query_one(f"#{button}").region
             assert region.height > 0, button
             assert region.bottom <= 30, button
-        assert str(screen.query_one("#keys").render()) == " · ".join(
-            f"{key.label} {key.words}"
-            for key in tui_design().footer.screens["config"].keys
+        assert (
+            str(screen.query_one("#keys").render())
+            == (tui_design().words["tab_hint_add_models"])
         )
         _tick(app, "qwen/qwen3.8-27b")
         await pilot.pause()
@@ -1400,12 +1413,13 @@ async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one()
         DashboardScreen,
         DelegationScreen,
         ModelPickScreen,
+        ProvidersScreen,
         SetupScreen,
     )
 
     app = _app(_Runner([], by_command=_selected_rows(connection=False)))
     async with app.run_test(size=(140, 44)) as pilot:
-        await _open_config(pilot, app)
+        await _open_config(pilot, app)  # adding models, on the Model tab
         seen = [type(app.screen)]
         for _ in range(4):  # four tabs, then round to the first again
             await pilot.press("tab")
@@ -1414,15 +1428,15 @@ async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one()
             seen.append(type(app.screen))
         assert seen == [
             SetupScreen,
-            ModelPickScreen,
             DelegationScreen,
             DashboardScreen,
-            SetupScreen,
+            ProvidersScreen,
+            ModelPickScreen,
         ]
-        await pilot.press("shift+tab")  # back from the first is the last
+        await pilot.press("shift+tab")  # back from Model is Config
         for _ in range(4):
             await pilot.pause()
-        assert isinstance(app.screen, DashboardScreen)
+        assert isinstance(app.screen, ProvidersScreen)
         await pilot.click("#tab-model")
         await pilot.pause()
         await pilot.pause()
@@ -1451,7 +1465,7 @@ async def test_a_list_that_answers_after_the_config_tab_was_left_is_dropped() ->
     as in CI, after the screen is gone but before its worker is cancelled):
     nothing is read from the departed screen and nothing raises."""
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
-        ModelPickScreen,
+        DelegationScreen,
         SetupScreen,
     )
 
@@ -1464,10 +1478,10 @@ async def test_a_list_that_answers_after_the_config_tab_was_left_is_dropped() ->
         loading = asyncio.create_task(setup._find())
         await pilot.pause()
         assert not loading.done()  # `models discover` is still out
-        await pilot.press("tab")
+        await pilot.press("tab")  # the add screen is the Model tab's
         for _ in range(6):
             await pilot.pause()
-        assert isinstance(app.screen, ModelPickScreen)
+        assert isinstance(app.screen, DelegationScreen)
         runner.release.set()
         await loading  # the late answer lands on a screen that is gone
 
@@ -1542,7 +1556,7 @@ async def test_a_failed_switch_prints_one_line_with_the_step_and_its_fix() -> No
         await pilot.pause()
         await pilot.pause()
         app.screen.set_all(True)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         await pilot.pause()
         await pilot.pause()
         text = _log_text(app)

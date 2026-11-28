@@ -21,12 +21,16 @@ from typing import Any
 
 import pytest
 
+from omnimarket.handlers.routing.byok_catalog_providers import (
+    load_byok_catalog_providers,
+)
 from omnimarket.handlers.routing.byok_provider_backends import (
     customer_provider_catalogue,
     house_keyed_provider_slugs,
     load_byok_not_offered_providers,
     load_byok_provider_catalog,
 )
+from omnimarket.handlers.routing.provider_feature_flags import provider_flags
 from omnimarket.validators import byok_catalogue_no_house_entry as mod
 from omnimarket.validators.byok_catalogue_no_house_entry import (
     CUSTOMER_REGISTERABLE_SECRET_FIELDS,
@@ -77,18 +81,42 @@ class TestTheShippedCatalogueIsClean:
         assert mod.main() == 0
 
     def test_the_rows_checked_are_exactly_the_customer_facing_catalogue(
-        self, rows: list[dict[str, Any]]
+        self, rows: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The gate must read the same rows the customer is offered.
 
         A gate that judged a different list than ``customer_provider_catalogue()``
         would pass while the customer-visible surface was dirty.
         """
+        # OMN-26688: a provider behind a feature flag is offered once its flag
+        # is set, so the gate judges its rows while the flag is still off. The
+        # list to match is the catalogue with every provider flag on.
+        for flag in provider_flags().values():
+            monkeypatch.setenv(flag, "1")
+        load_byok_provider_catalog.cache_clear()
+        try:
+            offered = customer_provider_catalogue()
+        finally:
+            load_byok_provider_catalog.cache_clear()
         # OMN-20157: a provider with several plans has several rows, and the
         # gate must judge every one of them, so compare the provider SET.
-        assert tuple(sorted({str(r["provider"]) for r in rows})) == (
-            customer_provider_catalogue()
-        )
+        assert tuple(sorted({str(r["provider"]) for r in rows})) == offered
+
+    def test_the_gate_covers_the_catalogue_with_flags_off(
+        self, rows: list[dict[str, Any]]
+    ) -> None:
+        """With every provider flag off, what a customer is offered is still judged.
+
+        Review 2026-11-27 (OMN-26688): the equality above holds with every flag
+        on; this guards the shipped default, where a flagged provider is hidden.
+        """
+        load_byok_provider_catalog.cache_clear()
+        try:
+            offered = set(customer_provider_catalogue())
+        finally:
+            load_byok_provider_catalog.cache_clear()
+        judged = {str(r["provider"]) for r in rows}
+        assert offered <= judged, sorted(offered - judged)
 
 
 class TestThePredicateIsNotTheNaiveIntersection:
@@ -117,6 +145,8 @@ class TestThePredicateIsNotTheNaiveIntersection:
         # OMN-21263: openai_compatible is the developer's own endpoint.
         # OMN-23413: reflection is customer-only; the platform holds no key.
         customer_only = {"openai", "anthropic", "openai_compatible", "reflection"}
+        # OMN-26688: every provider on the shipped models.dev list is customer-only.
+        customer_only |= set(load_byok_catalog_providers())
         assert set(customer_provider_catalogue()) - customer_only <= house
         assert not customer_only & house
 

@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Listed providers that are not offered, because their address was checked and
+# does not work (OMN-26688). Offered, each would fail only after the user had
+# pasted a key. The check is read only and sends no key: GET <api>/models, and
+# POST <api>/chat/completions with an empty body when that is not found. A
+# provider is held only after two checks agree. Drop a row once models.dev
+# drops the provider, or once a check finds its address working again.
+schema_version: "byok_catalog_withheld_providers.v1"
+providers:
+  - provider: llmtech
+    reason: shut down
+    evidence: "GET https://api.llmtech.eu/v1/models answered 410: the API was shut down on 31 October 2026 and keys no longer work."
+    checked_on: "2026-11-26"
+  - provider: aigrow
+    reason: server down
+    evidence: "GET https://aigrow.gg/v1/models answered 521 (origin server down) on both checks."
+    checked_on: "2026-11-26"
+  - provider: clarifai
+    reason: address gone
+    evidence: "api.clarifai.com has no DNS record (NXDOMAIN), from two networks."
+    checked_on: "2026-11-26"
+  - provider: drun
+    reason: refuses connections
+    evidence: "https://chat.d.run/v1 refused the connection on both checks."
+    checked_on: "2026-11-26"
+  - provider: inference
+    reason: wrong address
+    evidence: "https://inference.net/v1 answered 406, only HTML requests are supported here: it is the web site, not the API."
+    checked_on: "2026-11-26"
+  - provider: jad-ai
+    reason: no API route
+    evidence: "https://jadai.freesrv.com/v1 answered 404 for /models and for /chat/completions on both checks."
+    checked_on: "2026-11-26"
+  - provider: github-copilot
+    reason: needs a sign-in token
+    evidence: "https://api.githubcopilot.com takes a short-lived GitHub Copilot sign-in token, not an API key a user can create and paste."
+    checked_on: "2026-11-26"

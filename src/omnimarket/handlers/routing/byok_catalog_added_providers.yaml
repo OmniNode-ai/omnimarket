@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Providers the operator named that models.dev does not list (OMN-26688). Written by
+# hand from each provider's own docs; the rules of byok_catalog_providers.py hold for
+# every row (a fixed https base URL off this machine, a plain id, no plan), and a row
+# is refused once models.dev lists the same id. Each row's key is sent only to `api`.
+schema_version: byok_catalog_added_providers.v1
+providers:
+  # Operator 2026-11-26: "add https://docs.hopscotchlabs.ai/". The quickstart gives
+  # the OpenAI SDK base_url https://api.hopscotchlabs.ai/v1; keys are made on the
+  # Keys screen of platform.hopscotchlabs.ai and start ub_live_.
+  - id: hopscotch
+    name: Hopscotch
+    api: https://api.hopscotchlabs.ai/v1
+    doc: https://docs.hopscotchlabs.ai/get-started/authentication
+    source: https://docs.hopscotchlabs.ai/get-started/quickstart
+    read_on: "2026-11-26"

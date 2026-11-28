@@ -29,7 +29,6 @@ from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     _delegation_read,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import tui_design
-from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import _press
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui_delegation_hooks import (
     _app,
     _open,
@@ -73,7 +72,7 @@ async def test_the_switch_off_is_delegation_off() -> None:
         await _open(pilot, app)
         app.screen.query_one("#use-prompt_hook", Switch).value = False
         await pilot.pause()
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         await _settle(pilot)
         sent = _sent(app)
     assert ("delegation", "off", "--json") in sent
@@ -87,7 +86,7 @@ async def test_turning_off_a_paused_hook_sends_off() -> None:
         await _open(pilot, app)
         app.screen.set_all(False)
         await pilot.pause()
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         await _settle(pilot)
         sent = _sent(app)
     assert ("delegation", "off", "--json") in sent

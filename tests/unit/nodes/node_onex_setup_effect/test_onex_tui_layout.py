@@ -44,11 +44,6 @@ _KEYS = {
 def _hint(tab: str, words: dict[str, str]) -> str:
     """The tab's footer line (OMN-26620 mockups): plain words from the design."""
     name = tab.strip("/")
-    if name == "config":  # drawn from footer.screens.config (AC4)
-        footer = tui_design().footer
-        return footer.separator.join(
-            f"{key.label} {key.words}" for key in footer.screens["config"].keys
-        )
     return words[
         "tab_hint_dashboard_stopped" if name == "dashboard" else f"tab_hint_{name}"
     ]
@@ -90,16 +85,6 @@ async def test_the_key_line_shows_whole_above_the_buttons(tab: str) -> None:
                 keys.region,
                 buttons.region,
             )
-
-
-async def test_config_key_box_sits_beside_the_provider_list_with_room() -> None:
-    """L2 for /config (OMN-26620): the key box is right of the providers, a gap apart."""
-    app = _app(_Runner([], by_command=_selected_rows(connection=False)))
-    async with app.run_test(size=(120, 36)) as pilot:
-        await _open(pilot, "/config")
-        providers = app.screen.query_one("#provider").region
-        key_box = app.screen.query_one("#keybox").region
-        assert key_box.x - (providers.x + providers.width) >= 1, (providers, key_box)
 
 
 @pytest.mark.parametrize(

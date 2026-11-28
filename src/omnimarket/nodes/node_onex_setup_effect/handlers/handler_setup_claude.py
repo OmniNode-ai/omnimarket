@@ -21,9 +21,6 @@ from omnimarket.handlers.delegation_hook_switch import delegation_switch_enabled
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_command import (
     HandlerSetupCommand,
 )
-from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
-    _read,
-)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_claude_request import (
     ModelSetupClaudeRequest,
 )
@@ -35,6 +32,9 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation impo
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
+)
+from omnimarket.nodes.node_onex_setup_effect.setup_file_read import (
+    _read,  # not handler_setup_environment: it imports the inference stack
 )
 from omnimarket.nodes.node_onex_setup_effect.setup_legacy_hooks import (
     ClaudeSettingsError,

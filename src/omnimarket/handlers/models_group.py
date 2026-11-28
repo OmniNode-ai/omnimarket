@@ -16,7 +16,7 @@ from omnimarket.handlers import model_provider_labels as provider_labels
 
 MODELS_HELP = (
     "Set up the models delegation can use: Google Gemini, OpenRouter, OpenAI, "
-    "Reflection AI, Anthropic, GLM (z.ai), or a Local Model: any model server "
+    "Reflection AI, Anthropic, Z.AI, or a Local Model: any model server "
     "you run, by its endpoint URL.\n\nSet up any "
     "combination; delegation chooses among them for each task.\n\n"
     "Add a provider after setup with: onex models add <provider>."
@@ -31,7 +31,7 @@ class ModelsGroup(click.Group):
     ) -> tuple[str | None, click.Command | None, list[str]]:
         if args and not ctx.resilient_parsing:
             name = args[0].lower()
-            if name in provider_labels.LISTED_PROVIDERS and name not in self.commands:
+            if name in provider_labels.TYPED_PROVIDERS and name not in self.commands:
                 raise click.UsageError(
                     f"No such command '{args[0]}'. "
                     f"Did you mean 'onex models add {name}'?",

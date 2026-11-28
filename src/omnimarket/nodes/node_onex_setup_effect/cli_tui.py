@@ -31,7 +31,6 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, TypeVar, cas
 from urllib.parse import urlparse
 
 import click
-from omnibase_core.cli.cli_user_config import user_config_path
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from rich.cells import cell_len
 from rich.console import Group
@@ -72,6 +71,7 @@ from textual.widgets._tabs import Underline
 from textual.widgets.option_list import Option
 from textual.worker import Worker
 
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.models.model_catalog_entry import Deployment, ModelCatalogEntry
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
 from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
@@ -84,6 +84,7 @@ from omnimarket.nodes.node_onex_setup_effect.cli_theme import (
 from omnimarket.nodes.node_onex_setup_effect.cli_theme import (
     style as _style,
 )
+from omnimarket.nodes.node_onex_setup_effect.cli_toggle import ToggleSwitch
 from omnimarket.nodes.node_onex_setup_effect.doctor_page import (
     DoctorPage,
     render_doctor_page,
@@ -101,6 +102,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits 
     setup_provider_traits,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+    ModelTuiDelegationAgent,
     ModelTuiFooterKey,
     tui_design,
 )
@@ -177,14 +179,15 @@ def help_renderable(entries: Iterable[ModelTuiCommand]) -> Text:
     # The pairs are packed into short lines, so a line never breaks inside
     # one (H2: Rich breaks even at a no-break space).
     rows: list[Text] = [Text()]
-    for pair in design.words["help_keys"].split(_say("hint_separator")):
+    separator = design.words["hint_separator"]
+    for pair in design.words["help_keys"].split(separator):
         key, _, word = pair.partition(" ")
         row = rows[-1]
         if row and row.cell_len + len(pair) + 3 > _HELP_KEYS_WIDTH:
             row = Text()
             rows.append(row)
         if row:
-            row.append(_say("hint_separator"), style=_style("muted"))
+            row.append(separator, style=_style("muted"))
         row.append(key, style=_style("foreground", "bold"))
         row.append(f" {word}", style=_style("muted"))
     lines += [Text(), *rows]
@@ -219,8 +222,31 @@ _LOG = logging.getLogger(__name__)
 
 
 def _picker() -> tuple[ModelSetupPickerProvider, ...]:
-    """What /config offers, read from setup_provider_traits.yaml at call time."""
-    return setup_provider_traits().picker_providers()
+    """What /config offers: the providers setup_provider_traits.yaml writes from
+    each one's official docs, a server the user runs last. No list from
+    models.dev or anywhere else (operator 2026-11-26: "just use offcial docs")."""
+    traits = setup_provider_traits()
+    offered = (p for p in traits.picker if provider_turned_off(p.provider) is None)
+    return tuple(sorted(offered, key=lambda p: traits.needs_url(p.provider)))
+
+
+def _usd(amount: float) -> str:
+    """A price per 1M tokens: two places, more only for a fraction of a cent."""
+    return f"${amount:.2f}" if amount >= 0.01 or amount == 0 else f"${amount:.4f}"
+
+
+def _key_host(provider: str) -> str | None:
+    """The one host ``provider``'s key is sent to: its endpoint as onex's own
+    backend table writes it from the provider's docs, never a third-party list."""
+    from omnimarket.handlers.routing.byok_provider_backends import (
+        resolve_byok_provider_backend,
+    )
+
+    with contextlib.suppress(Exception):  # a provider with no fixed address
+        row = resolve_byok_provider_backend(provider)
+        if row is not None and row.endpoint_url:
+            return urlparse(row.endpoint_url).hostname
+    return None
 
 
 def _entry(provider: str) -> ModelSetupPickerProvider | None:
@@ -416,12 +442,20 @@ def _needs_terminal(command: click.Command) -> bool:
     return False
 
 
-def command_tree(root: click.Group) -> tuple[ModelTuiCommand, ...]:
-    """Every leaf command under ``root``, read from click at call time."""
+def command_tree(
+    root: click.Group, keep: Callable[[tuple[str, ...]], bool] | None = None
+) -> tuple[ModelTuiCommand, ...]:
+    """Every leaf command under ``root``, read from click at call time.
+
+    ``keep`` decides from a command's path alone, before it is loaded: an onex
+    extension is imported when it is loaded, and some take seconds (OMN-26688).
+    """
     found: list[ModelTuiCommand] = []
 
     def walk(group: click.Group, ctx: click.Context, prefix: tuple[str, ...]) -> None:
         for name in group.list_commands(ctx):
+            if keep is not None and not keep((*prefix, name)):
+                continue
             try:
                 command = group.get_command(ctx, name)
             except Exception:  # an extension that fails to load is left out, not fatal
@@ -443,6 +477,17 @@ def command_tree(root: click.Group) -> tuple[ModelTuiCommand, ...]:
 
     walk(root, click.Context(root, info_name="onex"), ())
     return tuple(sorted(found, key=lambda entry: entry.path))
+
+
+def _runnable(path: tuple[str, ...]) -> bool:
+    """Whether the prompt can run ``path``, or a command under it."""
+    design = tui_design()
+    if design.replaces(path):
+        return False
+    return any(
+        path[: len(cmd)] == cmd or cmd[: len(path)] == path
+        for cmd in design.customer_commands
+    )
 
 
 def _last_json_object(text: str) -> dict[str, object] | None:
@@ -726,12 +771,26 @@ def _discovered_models(text: str) -> tuple[str | None, list[str]]:
 type ListModels = Callable[[str, str], ModelByokModelListing]
 #: Reads the models.dev index (cached under the ONEX home); tests pass a fixture.
 type LoadIndex = Callable[[], ModelsDevIndex]
+#: Reads the key saved for a provider; tests pass a fixture.
+type StoredKey = Callable[[str], SecretStr | None]
+
+#: Stands in for a saved key in what a model list depends on: the key itself
+#: is read only when the list is fetched, and never kept on the screen.
+_SAVED_KEY = "\x00saved"
+
+
+def _stored_key(provider: str) -> SecretStr | None:
+    """The key saved for ``provider``, read without writing; None if unreadable."""
+    from omnimarket.nodes.node_onex_setup_effect.cli_choices import stored_key
+
+    return stored_key(provider)
 
 
 def _default_index() -> ModelsDevIndex:
-    return cast(
-        "ModelsDevIndex", _lazy(_CATALOG).load_models_dev(user_config_path().parent)
-    )
+    """Nothing from models.dev: a model's context and price are what its
+    provider's own API says, or unknown (operator 2026-11-26: "don't use
+    models.dev or any otehr things just use offcial docs")."""
+    return cast("ModelsDevIndex", _lazy(_CATALOG).EMPTY_INDEX)
 
 
 #: Asks the server at a base URL about its models; tests pass a fixture.
@@ -1107,31 +1166,6 @@ class _TabbedScreen(ModalScreen[_ResultT]):
         self.query_one("#summary", Static).update(_summary_text(self._selection))
 
 
-class _MineList(OptionList):
-    """Your providers. The arrows leave the list at either end, as they leave
-    the form's other fields (Y11)."""
-
-    @property
-    def highlighted_id(self) -> str | None:
-        if self.highlighted is None:
-            return None
-        return self.get_option_at_index(self.highlighted).id
-
-    def action_cursor_down(self) -> None:
-        at = self.highlighted
-        if at is not None and at >= self.option_count - 1:
-            screen = self.screen
-            if isinstance(screen, _TabbedScreen):
-                screen.action_field(1)
-            return
-        super().action_cursor_down()
-
-    def action_cursor_up(self) -> None:
-        if not self.highlighted:  # the first row, or none: nothing is above
-            return
-        super().action_cursor_up()
-
-
 class RemoveProviderScreen(ModalScreen[bool]):
     """Asked before a provider is removed; Cancel is chosen until the user
     moves to Remove, so Enter on a slip keeps the key (Y6)."""
@@ -1169,13 +1203,622 @@ class RemoveProviderScreen(ModalScreen[bool]):
         self.dismiss(event.button.id == "rm-yes")
 
 
-class SetupScreen(_TabbedScreen[None]):
-    """Provider, then its key or URL, then any number of its models; repeat per provider."""
+class KeyScreen(ModalScreen[str | None]):
+    """A provider's key, or a server's URL, asked in a window over the providers
+    table (operator 2026-11-26: "if that is not configured then api key enter
+    pop window open"). Where the key goes and where to create one show first,
+    both written from the provider's official docs; the key is checked as it
+    is typed; Enter or Save returns it, Esc or Cancel returns nothing."""
+
+    CSS = """
+    KeyScreen { align: center middle; background: $background 60%; }
+    #ks-box { width: 78; max-width: 94%; height: auto; border: round $primary; border-title-color: $primary; border-title-style: bold; padding: 1 2; background: $panel; }
+    #ks-host, #ks-hint { height: auto; color: $text-muted; }
+    #ks-box .-empty { display: none; }
+    #ks-row { height: 3; margin-top: 1; border: round $border; border-title-color: $text-muted; }
+    #ks-row:focus-within { border: round $primary; }
+    #ks-field { width: 1fr; height: 1; border: none; padding: 0 1; background: transparent; }
+    #ks-mark { width: auto; padding: 0 1; }
+    #ks-check { height: auto; color: $text-muted; }
+    #ks-buttons { height: 1; margin-top: 1; align-horizontal: right; }
+    #ks-buttons Button { height: 1; min-width: 10; border: none; margin: 0 0 0 2; }
+    """
+    BINDINGS = [Binding("escape", "close", show=False)]
+
+    def __init__(
+        self,
+        provider: str,
+        *,
+        change: bool,
+        runner: ProtocolTuiRunner,
+        list_models: ListModels | None,
+        url: str | None = None,
+    ) -> None:
+        super().__init__()
+        self._provider = provider
+        self._change = change
+        self._runner = runner
+        self._list_models: ListModels = list_models or _list_and_remember_models
+        self._url = url
+        self._timer: Timer | None = None
+
+    def compose(self) -> ComposeResult:
+        hosted = _hosted(self._provider)
+        with Vertical(id="ks-box"):
+            host = _key_host(self._provider) if hosted else None
+            yield Static(
+                _say("card_host", host=host) if host else "",
+                id="ks-host",
+                classes="" if host else "-empty",
+            )
+            yield Static(_hint(self._provider), id="ks-hint")
+            with Horizontal(id="ks-row"):
+                yield Input(
+                    value="" if hosted else (self._url or ""),
+                    placeholder=_say(
+                        "key_placeholder" if hosted else "url_placeholder"
+                    ),
+                    password=hosted,
+                    id="ks-field",
+                )
+                yield Static("", id="ks-mark")
+            yield Static("", id="ks-check")
+            with Horizontal(id="ks-buttons"):
+                yield Button(_say("button_cancel"), id="ks-cancel")
+                yield Button(
+                    _say("button_save" if self._change else "button_continue"),
+                    variant="primary",
+                    id="ks-save",
+                )
+
+    def on_mount(self) -> None:
+        label = _label(self._provider)
+        hosted = _hosted(self._provider)
+        title = (
+            ("key_change_title" if self._change else "key_add_title")
+            if hosted
+            else "url_add_title"
+        )
+        self.query_one("#ks-box").border_title = _say(title, provider=label)
+        self.query_one("#ks-row").border_title = _say(
+            "key_box" if hosted else "url_box"
+        )
+        self.query_one("#ks-field", Input).focus()
+        if not hosted and self._url:
+            self._schedule()
+
+    def _value(self) -> str:
+        return self.query_one("#ks-field", Input).value.strip()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        event.stop()
+        self._mark(None, "")
+        self._schedule()
+
+    def _schedule(self) -> None:
+        if self._timer is not None:
+            self._timer.stop()
+        self._timer = self.set_timer(tui_design().auto_find_seconds, self._check)
+
+    def _check(self) -> None:
+        value = self._value()
+        if not value or (
+            _hosted(self._provider) and len(value) < tui_design().min_key_length
+        ):
+            return
+        self.run_worker(self._read(value), exclusive=True, group="ks-check")
+
+    async def _read(self, value: str) -> None:
+        """Read the model list with what was typed: the key works, or why not (T4)."""
+        self._mark(None, _say("key_checking"))
+        try:
+            if _hosted(self._provider):
+                listing = await asyncio.to_thread(
+                    self._list_models, self._provider, value
+                )
+                count = len(listing.models)
+                ok = listing.outcome == "listed"
+                rejected = listing.outcome == "rejected"
+                message = listing.message
+            else:
+                _, out, err = await self._runner.capture(
+                    ("models", "discover", "--url", value, "--json")
+                )
+                message, found = _discovered_models(out or err)
+                count, ok, rejected = len(found), bool(found), False
+        except Exception as error:  # a listing that raised: say so, calmly
+            _LOG.warning("key check: %r", error)
+            self._mark(None, _say("key_unchecked"))
+            return
+        if value != self._value():  # typed on meanwhile
+            return
+        if ok:
+            self._mark(
+                "key_valid" if _hosted(self._provider) else "url_valid",
+                _say("models_available", count=count),
+            )
+        elif rejected:
+            self._mark("key_rejected", message or "")
+        else:
+            self._mark(None, message or _say("none_found"))
+
+    def _mark(self, word: str | None, said: str) -> None:
+        with contextlib.suppress(NoMatches):
+            mark = self.query_one("#ks-mark", Static)
+            if word is None:
+                mark.update("")
+            else:
+                colour = "success" if word in ("key_valid", "url_valid") else "warning"
+                mark.update(Text(_say(word), style=_style(colour)))
+            self.query_one("#ks-check", Static).update(said)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        self._save()
+
+    def _save(self) -> None:
+        value = self._value()
+        if not value:
+            self._mark(None, _say("key_first", provider=_label(self._provider)))
+            return
+        self.dismiss(value)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        if event.button.id == "ks-save":
+            self._save()
+        else:
+            self.dismiss(None)
+
+
+class _ProviderRows(DataTable[object]):
+    """The providers table. Up on the first row moves to the search above;
+    Left and Right switch between Configured and Available (V3)."""
+
+    def action_cursor_up(self) -> None:
+        if self.cursor_row <= 0:
+            self.screen.query_one("#provider-search", Input).focus()
+            return
+        super().action_cursor_up()
+
+    def on_resize(self) -> None:
+        if isinstance(self.screen, ProvidersScreen):
+            self.screen.fit_columns()
+
+    def action_cursor_left(self) -> None:
+        if isinstance(self.screen, ProvidersScreen):
+            self.screen.show_view("configured")
+
+    def action_cursor_right(self) -> None:
+        if isinstance(self.screen, ProvidersScreen):
+            self.screen.show_view("available")
+
+
+class ProvidersScreen(_TabbedScreen[None]):
+    """/config: the providers, a row each with its status, under two tabs:
+    Configured (yours) and Available (the rest) (operator 2026-11-26: "just
+    keep Provider, Status and inside config two tabs Configured Available").
+    Enter on an available provider asks for its key in a window; on one of
+    yours it opens its models on the Model tab. K changes a key, T tests,
+    X removes. Models are chosen on the Model tab, not here."""
 
     TAB = "config"
-    # Opens on the search, as before the two lists (S10): your providers are
-    # one Up away.
-    AUTO_FOCUS = "#provider-search"
+    NOTE = "#note"
+    BODY = "#providers"
+    FOOT = ("#cfg-foot", "#keys", "#buttons")
+    AUTO_FOCUS = "#providers"
+    PROBLEM = "problem_config"
+
+    CSS = """
+    ProvidersScreen { align: center middle; }
+    #form { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
+    #form .summary { display: none; }
+    #cfg-head { height: 1; }
+    #cfg-title { width: 1fr; text-style: bold; color: $primary; }
+    #cfg-count { width: auto; color: $text-muted; }
+    #provider-search { height: 1; border: none; padding: 0 1; margin-top: 1; background: $boost; }
+    #views { margin-top: 1; }
+    /* A framed table across the width (T14): header row, striped rows. */
+    #providers-box { height: 1fr; border: round $border; }
+    /* The header, then a line, then the rows (operator 2026-11-26: "one libe
+       after provider for better looking?"); its labels sit on the columns. */
+    #providers-head { height: 2; padding: 0 0 0 1; border-bottom: solid $border; }
+    #providers-head Static { text-style: bold; color: $text; }
+    #ph-provider { width: auto; }
+    #ph-status { width: 1fr; }
+    #providers > .datatable--even-row { background: $boost 40%; }
+    #providers { height: 1fr; background: transparent; scrollbar-size-vertical: 1; scrollbar-color: $border; scrollbar-background: $panel; }
+    #note { color: $text-muted; height: auto; }
+    #cfg-foot { dock: bottom; height: 1; }
+    #cfg-foot.-stacked { layout: vertical; height: 2; }
+    #cfg-foot.-stacked #keys { width: 100%; }
+    #cfg-foot.-stacked #buttons { width: 100%; align-horizontal: right; }
+    #keys { width: 1fr; height: 1; }
+    #buttons { width: auto; height: 1; }
+    #buttons Button { height: 1; min-width: 8; border: none; margin: 0 0 0 2; }
+    """
+    BINDINGS = [
+        Binding("escape", "cancel", "Back"),
+        Binding("ctrl+g", "guided_setup", _say("button_guided_setup"), priority=True),
+        Binding("k", "change_key", show=False),
+        Binding("t", "test", show=False),
+        Binding("x,delete", "remove", show=False),
+    ]
+
+    def __init__(
+        self,
+        runner: ProtocolTuiRunner,
+        list_models: ListModels | None = None,
+        read_server: ReadServer | None = None,
+        selection: ModelTuiSelection | None = None,
+    ) -> None:
+        super().__init__()
+        self._runner = runner
+        self._selection = selection or ModelTuiSelection()
+        self._list_models: ListModels = list_models or _list_and_remember_models
+        self._read_server: ReadServer = read_server or _default_read_server
+        #: "configured" or "available"; the user's choice once they make one.
+        self._view = "configured" if self._set_up() else "available"
+        self._view_chosen = False
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="form"):
+            yield _tab_strip(self.TAB)
+            yield _summary(self._selection)
+            with Horizontal(id="cfg-head"):
+                yield Static(_say("providers_title"), id="cfg-title")
+                yield Static("", id="cfg-count")
+            yield Input(
+                placeholder=_say("provider_search"),
+                id="provider-search",
+                select_on_focus=False,
+            )
+            yield Tabs(
+                Tab(_say("view_configured", count=0), id="view-configured"),
+                Tab(_say("view_available", count=0), id="view-available"),
+                # Opened on the right tab: a strip that first shows its first
+                # tab would read as the user's choice (T13).
+                active=f"view-{self._view}",
+                id="views",
+            )
+            with Vertical(id="providers-box"):
+                with Horizontal(id="providers-head"):
+                    yield Static(_say("col_provider"), id="ph-provider")
+                    yield Static(_say("col_status"), id="ph-status")
+                yield _ProviderRows(
+                    id="providers",
+                    cursor_type="row",
+                    zebra_stripes=True,
+                    show_header=False,
+                )
+            yield Static("", id="note")
+            with Horizontal(id="cfg-foot"):
+                yield Static(_tab_hint("tab_hint_config"), id="keys")
+                with Horizontal(id="buttons"):
+                    yield Button(_say("button_guided_setup"), id="guided-setup")
+                    yield Button(_say("button_cancel"), id="cancel")
+
+    def on_mount(self) -> None:
+        table = self.query_one("#providers", _ProviderRows)
+        for key in ("col_provider", "col_status"):
+            table.add_column(_say(key), key=key)
+        self._fill()
+
+    def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        """Configured or Available; the tab strip above is the base class's.
+        The code sets ``_view`` before it moves the tabs, so a tab that differs
+        from it is the user's choice, kept over a later read."""
+        if event.tabs.id != "views":
+            return
+        event.stop()
+        event.prevent_default()
+        view = (event.tab.id or "").removeprefix("view-")
+        if view != self._view:
+            self._view = view
+            self._view_chosen = True
+            self._fill()
+
+    def fit_columns(self) -> None:
+        """Provider and Status share the table's width, about 45 and 55 (T14)."""
+        table = self.query_one("#providers", _ProviderRows)
+        pad = 2 * table.cell_padding
+        room = table.size.width - 2 * pad - 1  # and the scrollbar
+        if room < 20:
+            return
+        provider = max(room * 9 // 20, 16)
+        widths = (provider, room - provider)
+        # The header's Status label starts where the Status cells do.
+        self.query_one("#ph-provider", Static).styles.width = provider + pad
+        if tuple(c.width for c in table.columns.values()) == widths:
+            return
+        table.clear(columns=True)
+        for key, width in zip(("col_provider", "col_status"), widths, strict=True):
+            table.add_column(_say(key), key=key, width=width)
+        self._fill()
+
+    @property
+    def view(self) -> str:
+        return self._view
+
+    def show_view(self, view: str) -> None:
+        """Configured or Available, by key or by the tabs (V3)."""
+        self.query_one("#views", Tabs).active = f"view-{view}"
+
+    def _set_up(self) -> list[str]:
+        """Your providers, in the order the setup lists them."""
+        return list(dict.fromkeys(e.provider for e in self._selection.entries))
+
+    def _ordered(self) -> list[ModelSetupPickerProvider]:
+        """Yours first; then the well-known ones, A-Z; then the listed ones, A-Z."""
+        mine = self._set_up()
+        written = {e.provider for e in setup_provider_traits().picker}
+        known = {e.provider: e for e in _picker()}
+        yours = [
+            known.get(p) or ModelSetupPickerProvider(provider=p, label=_label(p))
+            for p in mine
+        ]
+        rest = sorted(
+            (e for e in known.values() if e.provider not in mine),
+            key=lambda e: (e.provider not in written, e.label.casefold()),
+        )
+        return [*yours, *rest]
+
+    def _entries_of(self, provider: str) -> list[ModelCatalogEntry]:
+        return [e for e in self._selection.entries if e.provider == provider]
+
+    def _status(self, provider: str) -> Text:
+        if provider not in self._set_up():
+            return Text(_say("status_not_set_up"), style=_style("muted"))
+        glyphs = tui_design().glyphs
+        states = {e.status for e in self._entries_of(provider)}
+        if "failed" in states:
+            return Text(
+                f"{glyphs.failed} {_say('detail_failed')}", style=_style("error")
+            )
+        if states and states <= {"ready"}:
+            return Text(
+                f"{glyphs.done} {_say('detail_ready')}", style=_style("success")
+            )
+        return Text(
+            f"{glyphs.unchanged} {_say('detail_untested')}", style=_style("warning")
+        )
+
+    def _views(self, wanted: str) -> dict[str, list[ModelSetupPickerProvider]]:
+        """Yours and the rest, each narrowed by the search."""
+        mine = set(self._set_up())
+        shown = [
+            e
+            for e in self._ordered()
+            if not wanted or wanted in f"{e.label} {e.provider}".casefold()
+        ]
+        return {
+            "configured": [e for e in shown if e.provider in mine],
+            "available": [e for e in shown if e.provider not in mine],
+        }
+
+    def _fill(self) -> None:
+        """The open view's rows the search leaves; the cursor stays on its
+        provider. A search with no match here and some in the other view moves
+        there (V4)."""
+        table = self.query_one("#providers", _ProviderRows)
+        was = self.current()
+        wanted = self.query_one("#provider-search", Input).value.strip().casefold()
+        views = self._views(wanted)
+        if wanted and not views[self._view]:
+            other = "available" if self._view == "configured" else "configured"
+            if views[other]:
+                self._view = other
+                self.query_one("#views", Tabs).active = f"view-{other}"
+        everything = self._views("")
+        tabs = self.query_one("#views", Tabs)
+        for view in ("configured", "available"):
+            count = len(views[view]) if wanted else len(everything[view])
+            tabs.query_one(f"#view-{view}", Tab).label = _say(
+                f"view_{view}", count=count
+            )
+        shown = views[self._view]
+        table.clear()
+        for entry in shown:
+            # Plain names: the tab, not bold white, says which are yours (T14).
+            table.add_row(
+                Text(entry.label), self._status(entry.provider), key=entry.provider
+            )
+        keys = [e.provider for e in shown]
+        if was in keys:
+            table.move_cursor(row=keys.index(was))
+        total = len(everything[self._view])
+        self.query_one("#cfg-count", Static).update(
+            _say("provider_count", total=total)
+            if len(shown) == total
+            else _say("provider_count_shown", shown=len(shown), total=total)
+        )
+        if self._view == "configured" and not shown and not wanted:
+            self._note(_say("providers_empty"))
+
+    def current(self) -> str | None:
+        """The provider the cursor is on."""
+        table = self.query_one("#providers", _ProviderRows)
+        if not table.row_count:
+            return None
+        with contextlib.suppress(Exception):
+            key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key
+            return str(key.value)
+        return None
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "provider-search":
+            self._fill()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "provider-search":
+            table = self.query_one("#providers", _ProviderRows)
+            if table.row_count:
+                table.move_cursor(row=0)
+                table.focus()
+
+    def on_key(self, event: events.Key) -> None:
+        """Typing a name on the table searches it; k, t and x act on the row."""
+        char = event.character
+        if not char or not char.isprintable() or char.isspace():
+            return
+        if self.focused is not self.query_one("#providers", _ProviderRows):
+            return
+        if char in ("k", "t", "x"):
+            return
+        search = self.query_one("#provider-search", Input)
+        search.focus()
+        search.value += char
+        search.cursor_position = len(search.value)
+        event.stop()
+        event.prevent_default()
+
+    def _stored_url(self, provider: str) -> str | None:
+        return next(
+            (e.server_url for e in self._entries_of(provider) if e.server_url), None
+        )
+
+    @on(DataTable.RowSelected, "#providers")
+    def _chosen(self, event: DataTable.RowSelected) -> None:
+        """Enter: one of yours opens its models on the Model tab, read with its
+        saved key or its server (T6); any other asks for its key or URL in a
+        window first (T3), then opens them (T5)."""
+        event.stop()
+        provider = str(event.row_key.value)
+        if self._busy:
+            self._note(_say("still_working"), "warning")
+        elif provider in self._set_up():
+            self._open_models(provider, url=self._stored_url(provider))
+        else:
+            self._ask_key(provider, change=False)
+
+    def _ask_key(self, provider: str, *, change: bool) -> None:
+        def answered(value: str | None) -> None:
+            if not value:
+                self.query_one("#providers").focus()
+            elif change:
+                self._store_key(provider, value)
+            elif _hosted(provider):
+                # Kept in memory, not stored: onex stores a key with the
+                # models it is for, and those are ticked on the Model tab.
+                self._open_models(provider, key=SecretStr(value))
+            else:
+                self._open_models(provider, url=value)
+
+        self.app.push_screen(
+            KeyScreen(
+                provider,
+                change=change,
+                runner=self._runner,
+                list_models=self._list_models,
+                url=self._stored_url(provider),
+            ),
+            answered,
+        )
+
+    def _store_key(self, provider: str, key: str) -> None:
+        """A new key for one of yours, stored with every model it has (T7); the
+        key goes on stdin, never on the command line."""
+        models = tuple(
+            e.model_id for e in self._entries_of(provider) if not e.server_url
+        )
+        choice = ModelTuiSetupChoice(
+            provider=provider, url=None, models=models, key=SecretStr(key)
+        )
+        self._run(lambda app: app.apply_setup((choice,), progress=self._note))
+
+    def _open_models(
+        self, provider: str, url: str | None = None, key: SecretStr | None = None
+    ) -> None:
+        app = self.app
+        if isinstance(app, OnexTui):
+            app.tab_pending = "model"
+            app.run_worker(
+                app.open_add_models(provider, url=url, key=key),
+                exclusive=True,
+                group="tabs",
+            )
+
+    def action_change_key(self) -> None:
+        provider = self.current()
+        if self._busy or not provider:
+            return
+        if provider in self._set_up() and _hosted(provider):
+            self._ask_key(provider, change=True)
+        else:
+            self._note(_say("key_not_yours", provider=_label(provider)))
+
+    def action_test(self) -> None:
+        provider = self.current()
+        if not provider or provider not in self._set_up():
+            return
+        self._note(_say("testing_provider", provider=_label(provider)))
+        self._run(lambda app: app.test_provider(provider))
+
+    def action_remove(self) -> None:
+        provider = self.current()
+        if not provider or provider not in self._set_up():
+            return
+        entries = self._entries_of(provider)
+        servers = [e.server_url for e in entries if e.server_url]
+        url = servers[0] if len(set(servers)) == 1 else None
+
+        def answered(remove: bool | None) -> None:
+            if remove:
+                self._run(lambda app: app.remove_provider(provider, url))
+            else:
+                self.query_one("#providers").focus()
+
+        count = len(entries)
+        self.app.push_screen(
+            RemoveProviderScreen(
+                _say(
+                    "remove_question",
+                    provider=_label(provider),
+                    models=f"{count} model{'' if count == 1 else 's'}",
+                )
+            ),
+            answered,
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel":
+            self._close()
+        elif event.button.id == "guided-setup":
+            self.action_guided_setup()
+
+    def action_guided_setup(self) -> None:
+        self._run(OnexTui.guided_setup)
+
+    def _first_read_shown(self) -> None:
+        if not self._view_chosen and self._set_up():
+            self._view = "configured"
+            self.query_one("#views", Tabs).active = "view-configured"
+        self._fill()
+        self._empty_note()
+
+    def _empty_note(self) -> None:
+        if not self._selection.entries:
+            self._note(_say("providers_empty"))
+
+    def _show_selection(self) -> None:
+        super()._show_selection()
+        self._fill()
+
+    def action_cancel(self) -> None:
+        self._close()
+
+
+class SetupScreen(_TabbedScreen[None]):
+    """Add models, on the Model tab: one provider's models, read with the key
+    just entered on Config, its saved key or its server's URL; tick and save
+    (operator 2026-11-26: "when we add api key models fetch in model tab"; then,
+    on the first cut with a provider list and key box here, "after enter api
+    why this"). Providers and keys are Config's; this screen is only models."""
+
+    TAB = "model"
     NOTE = "#note"
     BODY = "#basket"
     FOOT = ("#cfg-foot", "#keys", "#buttons")
@@ -1185,56 +1828,12 @@ class SetupScreen(_TabbedScreen[None]):
     #form { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #form .summary { display: none; }
     #cfg-head { height: 1; }
-    #cfg-title { width: 1fr; text-style: bold; color: $primary; }
+    #cfg-title { width: 1fr; }
     #cfg-step { width: auto; color: $text-muted; }
-    /* The providers fill the height until a model list loads (operator
-       2026-11-26: "use the space"); then they shrink to make room for it. */
-    #cfg-row { height: 1fr; }
-    SetupScreen.-models #cfg-row { height: auto; }
-    /* Two panes (operator 2026-11-26: "Added provider should be in different
-       list ... redesign it like a pro"): your providers above the ones to
-       add; the right pane is the selected one of yours, or its key box. */
-    #cfg-left { width: 30; height: 100%; }
-    SetupScreen.-models #cfg-left { height: auto; }
-    #mine-box { height: auto; border: round $border; border-title-color: $text-muted; border-subtitle-color: $text-muted; padding: 0 1; }
-    #mine-box:focus-within { border: round $primary; }
-    #mine { height: auto; max-height: 8; border: none; padding: 0; background: transparent; }
-    SetupScreen.-short #mine { max-height: 4; }
-    SetupScreen.-models.-short #mine-box { display: none; }
-    SetupScreen.-no-mine #mine-box { display: none; }
-    #provider-box { width: 100%; height: 1fr; border: round $border; border-title-color: $text-muted; border-subtitle-color: $text-muted; padding: 0 1; }
-    #provider-box:focus-within { border: round $primary; }
-    SetupScreen.-models #provider-box { height: auto; }
-    #detail { height: auto; border: round $primary; border-title-color: $primary; border-title-style: bold; padding: 0 1; display: none; }
-    SetupScreen.-mine #detail { display: block; }
-    SetupScreen.-mine #keybox { display: none; }
-    #d-head { height: 1; }
-    #d-models { height: auto; color: $text-muted; }
-    #newkey { height: 1; border: none; padding: 0 1; margin-top: 1; background: $boost; }
-    #d-actions { layout: horizontal; height: 1; margin-top: 1; }
-    SetupScreen.-narrow #d-actions { layout: grid; grid-size: 2; grid-rows: 1; grid-gutter: 0 2; height: 2; }
-    #d-actions Button { height: 1; min-width: 8; border: none; margin: 0 2 0 0; }
-    SetupScreen.-narrow #d-actions Button { width: 100%; margin: 0; }
-    #d-remove { color: $error; }
-    /* Your providers view: the add flow's step, Selected line, Add and Save
-       act on nothing here, so they step aside. */
-    SetupScreen.-mine #cfg-step { display: none; }
-    SetupScreen.-mine #basket { display: none; }
-    SetupScreen.-mine #add { display: none; }
-    SetupScreen.-mine #save { display: none; }
-    #provider-search { height: 1; border: none; padding: 0; background: transparent; }
-    /* A-Z with search, set-up first (operator 2026-11-26); hundreds of
-       providers scroll inside the box, so the key box stays in view. */
-    #provider { width: 100%; height: 1fr; border: none; padding: 0; background: transparent; overflow-y: auto; }
-    SetupScreen.-models #provider { height: auto; max-height: 10; }
-    SetupScreen.-models.-short #provider { max-height: 6; }
-    #cfg-side { width: 1fr; height: auto; margin-left: 2; }
-    #keybox { width: 1fr; height: 3; border: round $border; border-title-color: $text-muted; }
-    #keybox Input { width: 1fr; height: 1; border: none; padding: 0 1; background: transparent; }
-    #keymark { width: auto; padding: 0 1; }
-    #found { height: 1fr; min-height: 3; display: none; }
-    /* 80x24 with every provider listed: the search box takes one row, so
-       the found models keep room to show (operator 2026-11-26). */
+    /* The provider, key and URL this screen reads with: chosen on Config. */
+    #state { display: none; }
+    #found { height: 1fr; min-height: 3; display: none; margin-top: 1; }
+    /* 80x24: the search box takes one row, so the found models keep room. */
     SetupScreen.-short #found #mt-search { height: 1; border: none; padding: 0 1; margin-bottom: 0; }
     #note { color: $text-muted; height: auto; }
     #basket { color: $success; height: auto; }
@@ -1250,7 +1849,6 @@ class SetupScreen(_TabbedScreen[None]):
     BINDINGS = [
         Binding("escape", "cancel", "Back"),
         Binding("ctrl+s", "save", _say("button_save"), priority=True),
-        Binding("ctrl+g", "guided_setup", _say("button_guided_setup"), priority=True),
     ]
 
     def __init__(
@@ -1260,6 +1858,11 @@ class SetupScreen(_TabbedScreen[None]):
         load_index: LoadIndex | None = None,
         read_server: ReadServer | None = None,
         selection: ModelTuiSelection | None = None,
+        *,
+        provider: str | None = None,
+        url: str | None = None,
+        key: SecretStr | None = None,
+        stored_key: StoredKey | None = None,
     ) -> None:
         super().__init__()
         self._runner = runner
@@ -1267,9 +1870,13 @@ class SetupScreen(_TabbedScreen[None]):
         self._list_models: ListModels = list_models or _list_and_remember_models
         self._load: LoadIndex = load_index or _default_index
         self._read_server: ReadServer = read_server or _default_read_server
+        self._stored_key: StoredKey = stored_key or _stored_key
         self._basket: dict[str, ModelTuiSetupChoice] = {}
         self._find_timer: Timer | None = None
         self._loading = False
+        self._start = provider
+        self._start_url = url
+        self._start_key = key
         # The provider and key or URL the shown model list was read for.
         self._listed: tuple[str, str] | None = None
 
@@ -1278,57 +1885,28 @@ class SetupScreen(_TabbedScreen[None]):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
             with Horizontal(id="cfg-head"):
-                yield Static(_say("add_title"), id="cfg-title")
-                yield Static(self._step_text(1), id="cfg-step")
-            choices = self._ordered()
-            set_up = self._set_up()
-            # The add list opens on a provider not set up yet (Y1).
-            first = next((e for e in choices if e.provider not in set_up), choices[0])
-            with Horizontal(id="cfg-row"):
-                with Vertical(id="cfg-left"):
-                    with Vertical(id="mine-box"):
-                        yield _MineList(id="mine")
-                    with Vertical(id="provider-box"):
-                        yield Input(
-                            placeholder=_say("provider_search"),
-                            id="provider-search",
-                            # The letter typed on the list moves here first (S7);
-                            # selecting on focus would let the next key replace it.
-                            select_on_focus=False,
-                        )
-                        yield Choice(
-                            [(self._provider_label(e), e.provider) for e in choices],
-                            first.provider,
-                            id="provider",
-                        )
-                with Vertical(id="cfg-side"):
-                    with Vertical(id="detail"):
-                        yield Static("", id="d-head")
-                        yield Static("", id="d-models")
-                        yield Input(
-                            placeholder=_say("new_key_placeholder"),
-                            password=True,
-                            id="newkey",
-                        )
-                        with Horizontal(id="d-actions"):
-                            yield Button(_say("button_change_key"), id="d-key")
-                            yield Button(_say("button_add_models"), id="d-add")
-                            yield Button(_say("button_test"), id="d-test")
-                            yield Button(_say("button_remove"), id="d-remove")
-                    with Horizontal(id="keybox"):
-                        yield Input(
-                            placeholder=_say("key_placeholder"),
-                            password=True,
-                            id="key",
-                        )
-                        yield Input(
-                            value=self._stored_url(first.provider) or "",
-                            placeholder=_say("url_placeholder"),
-                            id="url",
-                        )
-                        yield Static("", id="keymark")
-                    # The hint sits beside the list, under the key box.
-                    yield Static("", id="note")
+                yield Static("", id="cfg-title")
+                yield Static("", id="cfg-step")
+            choices = list(_picker())
+            first = self._first(choices)
+            with Horizontal(id="state"):
+                yield Choice(
+                    [(e.label, e.provider) for e in choices], first, id="provider"
+                )
+                yield Input(
+                    value=(
+                        self._start_key.get_secret_value()
+                        if self._start_key and first == self._start
+                        else ""
+                    ),
+                    password=True,
+                    id="key",
+                )
+                yield Input(
+                    value=self._start_url or self._stored_url(first) or "", id="url"
+                )
+                yield Static("", id="keymark")
+            yield Static("", id="note")
             yield ModelTable(
                 selectable=True,
                 provider_labels={e.provider: e.label for e in choices},
@@ -1340,12 +1918,18 @@ class SetupScreen(_TabbedScreen[None]):
                 line, id="basket", classes="-empty" if self._is_empty(line) else ""
             )
             with Horizontal(id="cfg-foot"):
-                yield Static(KeyFooter().render("config"), id="keys")
+                yield Static(_tab_hint("tab_hint_add_models"), id="keys")
                 with Horizontal(id="buttons"):
-                    yield Button(_say("button_guided_setup"), id="guided-setup")
-                    yield Button(_say("button_add"), id="add")
                     yield Button(_say("button_save"), variant="primary", id="save")
                     yield Button(_say("button_cancel"), id="cancel")
+
+    def _first(self, choices: list[ModelSetupPickerProvider]) -> str:
+        """The provider asked for; else the first of yours with a saved key,
+        whose models read at once; else the first listed."""
+        ids = [e.provider for e in choices]
+        if self._start is not None and self._start in ids:
+            return self._start
+        return next((p for p in ids if p in self._set_up() and _hosted(p)), ids[0])
 
     @staticmethod
     def _is_empty(line: object) -> bool:
@@ -1358,18 +1942,34 @@ class SetupScreen(_TabbedScreen[None]):
         basket.update(line)
         basket.set_class(self._is_empty(line), "-empty")
 
-    def _step_text(self, step: int) -> Text:
-        return Text(_say("step_of", step=step), style=_style("muted"))
-
-    def _step(self) -> int:
-        """1 choosing a provider and key, 2 models found, 3 something chosen."""
-        table = self.query_one("#found", ModelTable)
-        if self._basket or table.ticked:
-            return 3
-        return 2 if table.entries else 1
-
     def _show_step(self) -> None:
-        self.query_one("#cfg-step", Static).update(self._step_text(self._step()))
+        """How many models are ticked, beside the title; nothing before one is."""
+        table = self.query_one("#found", ModelTable)
+        count = len(table.ticked) + sum(len(p.models) for p in self._basket.values())
+        self.query_one("#cfg-step", Static).update(
+            _say("ticked_count", count=count) if count else ""
+        )
+
+    #: The key's or server's state from the last list read, for the title.
+    _key_word: str | None = None
+
+    def _show_title(self) -> None:
+        """Provider · key state · model count, on one line (operator: "Yes")."""
+        provider = self._provider()
+        title = Text(_label(provider), style=_style("primary", "bold"))
+        parts: list[tuple[str, str]] = []
+        if self._key_word is not None:
+            ok = self._key_word in ("key_valid", "url_valid")
+            parts.append((_say(self._key_word), "success" if ok else "warning"))
+        elif self._has_saved_key(provider) and not self._value("key"):
+            parts.append((_say("saved_key_title"), "muted"))
+        count = len(self.query_one("#found", ModelTable).entries)
+        if count:
+            parts.append((_say("title_models", count=count), "muted"))
+        for words, colour in parts:
+            title.append(_say("hint_separator"), style=_style("muted"))
+            title.append(words, style=_style(colour))
+        self.query_one("#cfg-title", Static).update(title)
 
     def _selected_line(self) -> str:
         """The models ticked or added, each with the model mark; or none yet."""
@@ -1388,14 +1988,8 @@ class SetupScreen(_TabbedScreen[None]):
 
     def on_mount(self) -> None:
         self.query_one("#found").display = False
-        self.query_one("#provider-box").border_title = _say("add_box")
-        self.query_one("#mine-box").border_title = _say("mine_box")
-        self.query_one("#newkey").display = False
-        self._fit_width()
-        self._show_mine()
-        self._filter_providers(self._value("provider-search"))
         self._show_fields()
-        self.query_one("#note", Static).update(_hint(self._provider()))
+        self.query_one("#note", Static).update(self._source_hint())
         self._schedule_find()
 
     def _provider(self) -> str:
@@ -1405,302 +1999,22 @@ class SetupScreen(_TabbedScreen[None]):
         """The providers that already have models set up."""
         return {e.provider for e in self._selection.entries}
 
-    def _ordered(self) -> list[ModelSetupPickerProvider]:
-        """Set-up providers first, then every other one A-Z (operator 2026-11-26)."""
-        set_up = self._set_up()
-        return sorted(
-            _picker(), key=lambda e: (e.provider not in set_up, e.label.casefold())
+    def _has_saved_key(self, provider: str) -> bool:
+        """A hosted provider of yours: its key is saved, so none is asked for."""
+        return _hosted(provider) and provider in self._set_up()
+
+    def _needs_key(self, provider: str) -> bool:
+        return (
+            _hosted(provider)
+            and not self._has_saved_key(provider)
+            and not self._value("key")
         )
 
-    def _provider_label(self, entry: ModelSetupPickerProvider) -> str:
-        mark = (
-            "provider_set_up"
-            if entry.provider in self._set_up()
-            else "provider_not_set_up"
-        )
-        return _say(mark, label=entry.label)
-
-    #: The one of your providers the right pane shows, while it shows one.
-    _detail: str | None = None
-    #: Narrower than this, the panel's four actions take two rows.
-    NARROW_WIDTH: ClassVar[int] = 110
-
-    def on_resize(self) -> None:
-        self._fit_width()
-
-    def _fit_width(self) -> None:
-        """A narrow window puts the panel's four actions on two rows (Y10)."""
-        self.set_class(self.app.size.width < self.NARROW_WIDTH, "-narrow")
-
-    def _mine_ids(self) -> list[str]:
-        """Your providers, in the order the setup lists them."""
-        return list(dict.fromkeys(e.provider for e in self._selection.entries))
-
-    def _entries_of(self, provider: str) -> list[ModelCatalogEntry]:
-        return [e for e in self._selection.entries if e.provider == provider]
-
-    def _state(self, provider: str) -> tuple[str, str, str]:
-        """The provider's mark, words and colour, from its models' last tests."""
-        glyphs = tui_design().glyphs
-        states = {e.status for e in self._entries_of(provider)}
-        if "failed" in states:
-            return glyphs.failed, _say("detail_failed"), "error"
-        if states and states <= {"ready"}:
-            return glyphs.done, _say("detail_ready"), "success"
-        return glyphs.unchanged, _say("detail_untested"), "warning"
-
-    def _show_mine(self) -> None:
-        """Fill "Your providers" from the setup as last read; hide it when empty."""
-        listing = self.query_one("#mine", _MineList)
-        was = listing.highlighted_id
-        ids = self._mine_ids()
-        listing.clear_options()
-        for provider in ids:
-            mark, _, colour = self._state(provider)
-            listing.add_option(
-                Option(
-                    Text.assemble(_label(provider), " ", (mark, _style(colour))),
-                    id=provider,
-                )
-            )
-        box = self.query_one("#mine-box")
-        # A class, not box.display: an inline display would beat the rule
-        # that hides the list while models load in a short window.
-        self.set_class(not ids, "-no-mine")
-        box.border_subtitle = str(len(ids)) if ids else ""
-        if was in ids:
-            listing.highlighted = ids.index(was)
-        if self._detail is not None:
-            if self._detail in ids:
-                self._show_detail(self._detail)
-            else:  # removed: back to adding
-                self._detail = None
-                self.set_class(False, "-mine")
-                self._hints()
-
-    def _show_detail(self, provider: str) -> None:
-        """The right pane: one of your providers, its state and its models (Y3)."""
-        if provider != self._detail:  # a half-typed new key is for one provider
-            self.query_one("#newkey").display = False
-        self._detail = provider
-        entries = self._entries_of(provider)
-        hosted = _deployment(provider) == "cloud"
-        mark, words, colour = self._state(provider)
-        detail = self.query_one("#detail")
-        detail.border_title = _label(provider)
-        servers = list(dict.fromkeys(e.server_url for e in entries if e.server_url))
-        where = (
-            _say("detail_key")
-            if hosted
-            else _say("detail_server", server=", ".join(servers))
-            if servers
-            else ""
-        )
-        head = Text.assemble((f"{mark} {words}", _style(colour)))
-        if where:
-            head.append(_say("hint_separator"), style=_style("muted"))
-            head.append(where, style=_style("muted"))
-        self.query_one("#d-head", Static).update(head)
-        models = ", ".join(_on_server(e.model_id, e.server_url) for e in entries)
-        self.query_one("#d-models", Static).update(
-            _say("detail_models", models=models or _say("detail_no_models"))
-        )
-        self.query_one("#d-key").display = hosted
-
-    def _hints(self) -> None:
-        self.query_one("#keys", Static).update(
-            KeyFooter().render(self._footer_screen())
-        )
-        self.call_after_refresh(self._fit_footer)
-
-    def _footer_screen(self) -> str:
-        return "config_mine" if self.has_class("-mine") else "config"
-
-    def _use_mine(self, mine: bool) -> None:
-        """The right pane shows one of your providers, or the key box."""
-        if mine == self.has_class("-mine"):
-            return
-        self.set_class(mine, "-mine")
-        self.query_one("#cfg-title", Static).update(
-            _say("mine_title" if mine else "add_title")
-        )
-        if mine:  # the add pane's hint is not about your providers
-            if not self._busy:
-                self._note("")
-        else:
-            self._detail = None
-            if not self._busy:
-                self.query_one("#note", Static).update(_hint(self._provider()))
-        self._hints()
-
-    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
-        widget_id = event.widget.id or ""
-        if widget_id == "mine" or widget_id.startswith("d-") or widget_id == "newkey":
-            listing = self.query_one("#mine", _MineList)
-            if listing.highlighted is None and listing.option_count:
-                listing.highlighted = 0
-            if listing.highlighted_id:
-                self._show_detail(listing.highlighted_id)
-            self._use_mine(True)
-        elif widget_id in ("provider-search", "provider", "key", "url"):
-            self._use_mine(False)
-
-    @on(OptionList.OptionHighlighted, "#mine")
-    def _mine_moved(self, event: OptionList.OptionHighlighted) -> None:
-        if event.option.id and self.query_one("#mine").has_focus:
-            self._show_detail(event.option.id)
-            self._use_mine(True)
-
-    @on(OptionList.OptionSelected, "#mine")
-    def _mine_chosen(self, event: OptionList.OptionSelected) -> None:
-        """Enter on one of your providers: to its first action."""
-        if event.option.id:
-            self._show_detail(event.option.id)
-            self._use_mine(True)
-            first = "#d-key" if self.query_one("#d-key").display else "#d-add"
-            self.query_one(first, Button).focus()
-
-    def action_field(self, step: int) -> None:
-        """Up from the add list's search reaches your last provider (Y11)."""
-        before = self.focused
-        super().action_field(step)
-        listing = self.query_one("#mine", _MineList)
-        if self.focused is listing and before is not listing and listing.option_count:
-            listing.highlighted = listing.option_count - 1 if step < 0 else 0
-
-    def _change_key(self) -> None:
-        field = self.query_one("#newkey", Input)
-        field.value = ""
-        field.display = True
-        field.focus()
-        self._note(_say("new_key_hint", provider=_label(self._detail or "")))
-
-    def _save_key(self, key: str) -> None:
-        """Store the new key with every model the provider has; the key goes on
-        stdin, never on the command line (Y4)."""
-        provider = self._detail
-        if not provider or not key:
-            return
-        field = self.query_one("#newkey", Input)
-        field.value = ""
-        field.display = False
-        models = tuple(
-            e.model_id for e in self._entries_of(provider) if not e.server_url
-        )
-        choice = ModelTuiSetupChoice(
-            provider=provider, url=None, models=models, key=SecretStr(key)
-        )
-        self.query_one("#d-key", Button).focus()
-        self._run(lambda app: app.apply_setup((choice,), progress=self._note))
-
-    def _add_models_to(self, provider: str) -> None:
-        """Back to the add pane, on this provider, so more of its models can be
-        ticked (Y9)."""
-        choice = self.query_one("#provider", Choice)
-        choice.value = provider
-        self._use_mine(False)
-        self._filter_providers(self._value("provider-search"))
-        self._show_fields()
-        self.query_one("#note", Static).update(_hint(provider))
-        self.query_one("#key" if _hosted(provider) else "#url", Input).focus()
-        self._show_rows([])
-        self._schedule_find()
-
-    def _ask_remove(self, provider: str) -> None:
-        count = len(self._entries_of(provider))
-        servers = [e.server_url for e in self._entries_of(provider) if e.server_url]
-        url = servers[0] if len(set(servers)) == 1 else None
-
-        def answered(remove: bool | None) -> None:
-            if remove:
-                self._run(lambda app: app.remove_provider(provider, url))
-            else:
-                self.query_one("#d-remove", Button).focus()
-
-        self.app.push_screen(
-            RemoveProviderScreen(
-                _say(
-                    "remove_question",
-                    provider=_label(provider),
-                    models=f"{count} model{'' if count == 1 else 's'}",
-                )
-            ),
-            answered,
-        )
-
-    def _arrange_providers(self) -> None:
-        """Put the list back in order after the setup is read again."""
-        self._show_mine()
-        choice = self.query_one("#provider", Choice)
-        buttons = {b.name: b for b in choice.query(RadioButton)}
-        previous: RadioButton | None = None
-        for entry in self._ordered():
-            button = buttons.get(entry.provider)
-            if button is None:
-                continue
-            button.label = self._provider_label(entry)
-            if previous is None:
-                choice.move_child(button, before=0)
-            else:
-                choice.move_child(button, after=previous)
-            previous = button
-        self._filter_providers(self._value("provider-search"))
-
-    def _count_providers(self) -> None:
-        """How many providers there are, or how many the search left (S14)."""
-        choice = self.query_one("#provider", Choice)
-        set_up = self._set_up() - {choice.value}
-        buttons = [b for b in choice.query(RadioButton) if b.name not in set_up]
-        shown = sum(1 for button in buttons if button.display)
-        total = len(buttons)
-        self.query_one("#provider-box").border_subtitle = (
-            _say("provider_count", total=total)
-            if shown == total
-            else _say("provider_count_shown", shown=shown, total=total)
-        )
-
-    def _filter_providers(self, text: str) -> None:
-        """Show only the providers whose name or id holds ``text``; the marked
-        one stays marked even when hidden. Your providers have their own list,
-        so they leave this one, unless one is marked for more models (Y1)."""
-        wanted = text.strip().casefold()
-        choice = self.query_one("#provider", Choice)
-        set_up = self._set_up() - {choice.value}
-        for button in choice.query(RadioButton):
-            entry = _entry(button.name or "")
-            name = f"{entry.label if entry else ''} {button.name}".casefold()
-            shown = (not wanted or wanted in name) and button.name not in set_up
-            button.display = shown
-            button.disabled = not shown  # the arrows skip what is hidden
-        self._count_providers()
-
-    def on_key(self, event: events.Key) -> None:
-        """Typing on the provider list searches it, as list pickers in other
-        terminal apps do. Tab changes tab and the arrow keys there move between
-        providers, so this is how the keyboard reaches the search line."""
-        char = event.character
-        if not char or not char.isprintable() or char.isspace():
-            return
-        if self.focused not in (
-            self.query_one("#provider", Choice),
-            self.query_one("#mine", _MineList),
-        ):
-            return
-        search = self.query_one("#provider-search", Input)
-        search.focus()
-        search.value += char
-        search.cursor_position = len(search.value)
-        event.stop()
-        event.prevent_default()
-
-    def _pick_first_shown(self) -> None:
-        """Enter in the search: mark the first provider shown, go to its box."""
-        choice = self.query_one("#provider", Choice)
-        first = next((b for b in choice.query(RadioButton) if b.display), None)
-        if first is None or not first.name:
-            return
-        choice.value = first.name
-        self.query_one("#key" if _hosted(first.name) else "#url", Input).focus()
+    def _source_hint(self) -> str:
+        provider = self._provider()
+        if self._has_saved_key(provider) and not self._value("key"):
+            return _say("saved_key_used", provider=_label(provider))
+        return _hint(provider)
 
     def _stored_url(self, provider: str) -> str | None:
         """The server the user already runs ``provider``'s models on, if any."""
@@ -1757,42 +2071,45 @@ class SetupScreen(_TabbedScreen[None]):
         return self.query_one(f"#{widget_id}", Input).value.strip()
 
     def _show_fields(self) -> None:
-        hosted = _hosted(self._provider())
+        provider = self._provider()
         url = self.query_one("#url", Input)
-        # A default the user has not edited follows the provider; a typed URL stays.
-        # An empty field offers the server already set up; a typed URL stays.
-        if not hosted and not url.value.strip():
-            url.value = self._stored_url(self._provider()) or ""
-        self.query_one("#key").display = hosted
-        self.query_one("#url").display = not hosted
-        self.query_one("#keybox").border_title = _say(
-            "key_box" if hosted else "url_box"
-        )
+        # An empty URL takes the server already set up; a given one stays.
+        if not _hosted(provider) and not url.value.strip():
+            url.value = self._stored_url(provider) or ""
+        # Held out of sight (#state); each still says which one is in use.
+        self.query_one("#key").display = _hosted(provider)
+        self.query_one("#url").display = not _hosted(provider)
         self._mark_key(None)
 
     def _mark_key(self, word: str | None) -> None:
-        """The mark beside the key: valid or not accepted, from the list read with it."""
+        """The key's state from the list read with it: valid or not accepted."""
+        self._key_word = word
         mark = self.query_one("#keymark", Static)
         if word is None:
             mark.update("")
-            return
-        colour = "success" if word in ("key_valid", "url_valid") else "warning"
-        mark.update(Text(_say(word), style=_style(colour)))
+        else:
+            colour = "success" if word in ("key_valid", "url_valid") else "warning"
+            mark.update(Text(_say(word), style=_style(colour)))
+        self._show_title()
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         # A key belongs to the provider it was typed for: never offer it to the next.
         self.query_one("#key", Input).value = ""
-        self._filter_providers(self._value("provider-search"))  # the marked one shows
         self._show_fields()
-        self.query_one("#key" if _hosted(self._provider()) else "#url", Input).focus()
-        self.query_one("#note", Static).update(_hint(self._provider()))
+        self.query_one("#note", Static).update(self._source_hint())
         self._show_rows([])
         self._schedule_find()
 
     def _source(self) -> tuple[str, str]:
-        """What a model list depends on: the provider and its key or URL."""
+        """What a model list depends on: the provider and its key or URL; the
+        saved key stands in while none is typed (T6)."""
         provider = self._provider()
-        return provider, self._value("key" if _hosted(provider) else "url")
+        if not _hosted(provider):
+            return provider, self._value("url")
+        typed = self._value("key")
+        if not typed and self._has_saved_key(provider):
+            return provider, _SAVED_KEY
+        return provider, typed
 
     def _schedule_find(self) -> None:
         """Fetch the list on its own once the key or URL stops changing."""
@@ -1805,7 +2122,9 @@ class SetupScreen(_TabbedScreen[None]):
     def _auto_find(self) -> None:
         provider, value = self._source()
         if not value or (
-            _hosted(provider) and len(value) < tui_design().min_key_length
+            _hosted(provider)
+            and value != _SAVED_KEY
+            and len(value) < tui_design().min_key_length
         ):
             return
         self.run_worker(self._find(), exclusive=True, group="find")
@@ -1826,13 +2145,24 @@ class SetupScreen(_TabbedScreen[None]):
         finally:
             self._loading = False
 
+    async def _key_for(self, provider: str) -> str:
+        """The typed key, or the saved one read now; never shown or logged."""
+        typed = self._value("key")
+        if typed or not self._has_saved_key(provider):
+            return typed
+        saved = await asyncio.to_thread(self._stored_key, provider)
+        return saved.get_secret_value() if saved else ""
+
     async def _fetch(
         self, note: Static, provider: str, wanted: tuple[str, str]
     ) -> None:
         if _hosted(provider):
-            key = self._value("key")
+            key = await self._key_for(provider)
             if not key:
-                note.update(_say("key_first", provider=_label(provider)))
+                word = (
+                    "saved_key_unread" if self._has_saved_key(provider) else "key_first"
+                )
+                note.update(_say(word, provider=_label(provider)))
                 return
             listing, index = await asyncio.gather(
                 asyncio.to_thread(self._list_models, provider, key),
@@ -1868,6 +2198,8 @@ class SetupScreen(_TabbedScreen[None]):
             self._listed = wanted
             if entries:
                 table.focus_rows()
+            else:  # nothing to choose from: the reason belongs on Config
+                self.query_one("#cancel", Button).focus()
         hosted = _hosted(provider)
         if accepted:
             self._mark_key("key_valid" if hosted else "url_valid")
@@ -1893,14 +2225,11 @@ class SetupScreen(_TabbedScreen[None]):
         table.set_ticked(())
         table.set_entries(entries)
         table.display = bool(entries)
-        self.set_class(bool(entries), "-models")  # the providers make room (S13)
         self._show_step()
+        self._show_title()
         self._paint_basket()
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "provider-search":
-            self._filter_providers(event.value)
-            return
         if event.input.id in ("key", "url"):
             self._mark_key(None)
             self._schedule_find()
@@ -1910,33 +2239,16 @@ class SetupScreen(_TabbedScreen[None]):
         self._paint_basket()
         self._show_step()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Enter in the key or URL field moves on to the list, loading it if needed."""
-        if event.input.id == "provider-search":
-            self._pick_first_shown()
-            return
-        if event.input.id == "newkey":
-            self._save_key(event.value.strip())
-            return
-        if event.input.id not in ("key", "url"):
-            return
-        # Enter replaces the search typing scheduled
-        if self._find_timer is not None:
-            self._find_timer.stop()
-        table = self.query_one("#found", ModelTable)
-        if table.entries and self._listed == self._source():
-            table.focus_rows()
-        else:
-            self.run_worker(self._find(), exclusive=True, group="find")
-
     def _add_current(self) -> bool:
+        """Ticked models into the basket. A key typed here goes with them; one
+        of yours uses its saved key, so only the models are added (T6)."""
         provider = self._provider()
         table = self.query_one("#found", ModelTable)
         chosen = [entry.model_id for entry in table.ticked]
         if not chosen:
             return False
         key = self._value("key")
-        if _hosted(provider) and not key:
+        if _hosted(provider) and not key and not self._has_saved_key(provider):
             self.query_one("#note", Static).update(
                 _say("needs_key", provider=_label(provider))
             )
@@ -1959,44 +2271,10 @@ class SetupScreen(_TabbedScreen[None]):
         return self._selected_line()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
-        note = self.query_one("#note", Static)
-        mine = self._detail
-        if event.button.id in ("d-key", "d-add", "d-test", "d-remove") and mine:
-            if self._busy:
-                self._note(_say("still_working"), "warning")
-            elif event.button.id == "d-key":
-                self._change_key()
-            elif event.button.id == "d-add":
-                self._add_models_to(mine)
-            elif event.button.id == "d-test":
-                self._note(_say("testing_provider", provider=_label(mine)))
-                self._run(lambda app: app.test_provider(mine))
-            else:
-                self._ask_remove(mine)
-        elif event.button.id == "cancel":
-            self._close()
-        elif event.button.id == "add":
-            if self._loading:
-                note.update(_say("still_loading"))
-            elif self._add_current():
-                note.update(_say("added"))
-                self.app.notify(
-                    _say("added"),
-                    title=_say("toast_added"),
-                    timeout=tui_design().toast_seconds,
-                )
-            else:
-                note.update(_say("tick_first"))
+        if event.button.id == "cancel":
+            self.action_cancel()
         elif event.button.id == "save":
             self.action_save()
-        elif event.button.id == "guided-setup":
-            self.action_guided_setup()
-
-    def action_guided_setup(self) -> None:
-        if self._basket or self.query_one("#found", ModelTable).ticked:
-            self._note(_say("guided_setup_pending"), "warning")
-            return
-        self._run(OnexTui.guided_setup)
 
     def action_save(self) -> None:
         """Set up what is ticked or added, here, and stay; refuse with nothing chosen."""
@@ -2021,23 +2299,52 @@ class SetupScreen(_TabbedScreen[None]):
             line = await app.apply_setup(choices, progress=self._note)
             if app.setup_ok:  # a failed save keeps the choices for a retry
                 self._basket = {}
+            if app.setup_passed:  # a failed test stays in view, with its reason
+                # Saved: on to your models, the outcome under them (operator
+                # 2026-11-26: "Yes" to "then shows your model list").
+                self._saved_outcome = line
+                self.set_timer(0.05, self._to_your_models)
             return line
 
         self._run(save)
 
+    #: What the save said, carried to your model list.
+    _saved_outcome: Text | str | None = None
+
+    def _to_your_models(self) -> None:
+        if self._busy:  # the save's own read is still landing
+            self.set_timer(0.05, self._to_your_models)
+            return
+        app = self.app
+        if not isinstance(app, OnexTui):
+            return
+        outcome = self._saved_outcome
+
+        async def go() -> None:
+            await app.switch_tab("model")
+            if outcome is not None and isinstance(app.screen, ModelPickScreen):
+                app.screen.outcome(outcome)
+
+        app.tab_pending = "model"
+        app.run_worker(go(), exclusive=True, group="tabs")
+
     def _first_read_shown(self) -> None:
         # What was ticked while the setup was read stays ticked.
         self.query_one("#basket", Static).update(self._basket_line())
-        self._arrange_providers()  # yours move to their own list
+        self._show_fields()
+        self._schedule_find()  # one of yours now reads with its saved key
 
     def _show_selection(self) -> None:
         super()._show_selection()
-        self._arrange_providers()
         self.query_one("#found", ModelTable).set_ticked(())
         self.query_one("#basket", Static).update(self._basket_line())
 
     def action_cancel(self) -> None:
-        self._close()
+        """Esc: back to the providers on Config; nothing is stored."""
+        if self._busy:
+            self._note(_say("still_working"), "warning")
+            return
+        self._leave("config")
 
 
 def _json_rows(text: str) -> list[dict[str, object]]:
@@ -2204,27 +2511,52 @@ class Choice(RadioSet):
             self._value = event.pressed.name
 
 
+class _AgentList(VerticalScroll, can_focus=False):
+    """The Delegation tab's agents; the switches take the keyboard, not the
+    list, so Up and Down move between switches instead of scrolling."""
+
+    BINDINGS = [
+        Binding("down", "screen.field(1)", show=False),
+        Binding("up", "screen.field(-1)", show=False),
+    ]
+
+
 class DelegationScreen(_TabbedScreen[None]):
-    """Your selected models and one switch per delegation hook; nothing is typed
-    (OMN-23413 AC25; operator 2026-11-15: "build separate switches")."""
+    """The agents onex delegates from, each with its own switch (OMN-26688,
+    operator 2026-11-26: a picture of an agent list, "do like this", and no
+    models here because the Model tab lists them). Claude Code's switch turns
+    delegation on and off through its hook (OMN-23413); an agent whose
+    integration is in progress switches and is remembered, and sends nothing."""
 
     CSS = """
     DelegationScreen { align: center middle; }
     #deleg { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #deleg .summary { display: none; }
+    #dstate { height: auto; padding: 1 1; border-bottom: solid $border; }
     #dhead { height: 1; }
     #dtitle { width: 1fr; text-style: bold; color: $primary; }
-    #on-state { width: auto; text-style: bold; }
-    #hooks-title { color: $text-muted; height: 1; }
-    #dturn { width: auto; min-width: 12; height: 1; border: none; margin: 1 0 0 0; }
+    #dcount { width: auto; color: $text-muted; }
+    /* OMN-26688: each switch shows its state; the title line keeps none. */
+    #on-state { display: none; }
+    #hooks-title { height: 1; margin-top: 1; color: $text-muted; }
     #dswitches { display: none; height: 0; }
+    /* A thin, quiet scrollbar: the list scrolls on a short window. */
+    #agents { height: 1fr; padding: 0 1; scrollbar-size-vertical: 1; scrollbar-color: $border; scrollbar-color-hover: $text-muted; scrollbar-color-active: $text-muted; scrollbar-background: $panel; scrollbar-background-hover: $panel; scrollbar-background-active: $panel; }
+    /* One line per agent: its name, then its switch at the right. */
+    .agent-row { height: 1; margin: 1 2 0 0; }
+    .agent-name { width: 1fr; height: 1; color: $foreground; text-wrap: nowrap; text-overflow: ellipsis; }
+    /* The row whose switch has the keyboard (-current, set on focus): its
+       name bold, in the accent colour. */
+    .agent-row.-current .agent-name { color: $primary; text-style: bold; }
+    #dlegend { height: 1; color: $text-muted; }
+    .agent-note { height: auto; }
     .hook { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
-    #dstate { height: auto; border: round $border; padding: 0 1; }
-    #dorder-title { display: none; }
-    #selected { height: 1fr; border: round $border; padding: 0 1; margin-top: 1; }
-    #selected DataTable { height: auto; max-height: 100%; }
     #claude { height: auto; }
-    #dfoot { dock: bottom; height: auto; }
+    /* A short screen keeps its rows for the agents. */
+    DelegationScreen.-short #dstate { padding: 0 1; }
+    DelegationScreen.-short #hooks-title { margin-top: 0; }
+    DelegationScreen.-short .agent-row { margin: 0 2 0 0; }
+    #dfoot { dock: bottom; height: auto; border-top: solid $border; }
     #dnote { color: $text-muted; height: auto; }
     #dbar { height: 1; }
     #dbar.-stacked { layout: vertical; height: 2; }
@@ -2236,13 +2568,16 @@ class DelegationScreen(_TabbedScreen[None]):
     """
     TAB = "delegation"
     NOTE = "#dnote"
-    BODY = "#selected"
+    #: No models table here (OMN-26688): the agents show while setup is read.
+    BODY = ""
     FOOT = ("#dbar", "#dkeys", "#dbuttons")
     PROBLEM = "problem_delegation"
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
-        Binding("ctrl+s", "save", _say("button_save"), priority=True),
-        Binding("space", "flip", "Switch both", show=False),
+        # No Save: a switch applies at once (OMN-26688). ctrl+s stays, not
+        # shown, for a state set from code.
+        Binding("ctrl+s", "save", _say("button_save"), priority=True, show=False),
+        Binding("space", "flip", "Switch", show=False),
     ]
 
     def __init__(
@@ -2264,6 +2599,10 @@ class DelegationScreen(_TabbedScreen[None]):
         #: Claude Code's state once the check answers; "checking" until then.
         self._claude_state = "checking"
         self._claude_fix = ""
+        #: A switch Claude Code's toggle started is running (OMN-26688).
+        self._switching = False
+        #: The agents in progress the user switched, as last saved (OMN-26688).
+        self._agents = AgentStore.load()
 
     def compose(self) -> ComposeResult:
         words = tui_design().delegation
@@ -2273,68 +2612,98 @@ class DelegationScreen(_TabbedScreen[None]):
             with Vertical(id="dstate"):
                 with Horizontal(id="dhead"):
                     yield Static(Text(words.title), id="dtitle")
+                    yield Static(self._count_text(), id="dcount")
                     yield Static(self._state_text(), id="on-state")
                 yield Static(
                     Text(_say("delegation_about"), style=_style("muted")),
                     id="hooks-title",
                 )
-                yield Button(
-                    _say(
-                        "turn_off" if any(self._saved_boxes().values()) else "turn_on"
-                    ),
-                    id="dturn",
-                )
-                # The switches hold the pending state; the button and Space move them.
+                # The switches hold Claude Code's pending state; its toggle and
+                # Space move them.
                 with Horizontal(id="dswitches"):
                     saved = self._saved_boxes()
                     for hook in words.hooks:
                         with Horizontal(classes="hook-switch"):
                             yield Switch(value=saved[hook.key], id=f"use-{hook.key}")
-                for hook in words.hooks:
+            with _AgentList(id="agents"):
+                for agent in words.agents:
+                    with Horizontal(classes="agent-row", id=f"row-{agent.key}"):
+                        yield Static(self._name_text(agent), classes="agent-name")
+                        yield ToggleSwitch(
+                            id="dturn" if agent.live else f"agent-{agent.key}",
+                            name=agent.key,
+                        )
+                    if not agent.live:
+                        continue
+                    # Under Claude Code, only when something is wrong: its hook,
+                    # and whether Claude Code is there (OMN-23413).
+                    for hook in words.hooks:
+                        line = Static(
+                            self._hook_text(hook.key),
+                            id=f"hook-{hook.key}",
+                            classes="hook agent-note",
+                        )
+                        line.display = self._hook_problem(hook.key)
+                        yield line
                     yield Static(
-                        self._hook_text(hook.key), id=f"hook-{hook.key}", classes="hook"
+                        Text(_say("claude_checking"), style=_style("muted")),
+                        id="claude",
+                        classes="agent-note",
                     )
-                # OMN-23413: is Claude Code there? Read from setup's own check.
-                yield Static(
-                    Text(_say("claude_checking"), style=_style("muted")), id="claude"
-                )
-            yield Static(
-                Text(_say("order_title"), style=_style("muted")), id="dorder-title"
-            )
-            yield ModelTable(
-                selectable=False,
-                provider_labels={e.provider: e.label for e in _picker()},
-                id="selected",
-                layout="order",
-            )
             with Vertical(id="dfoot"):
+                # What the mark on an agent means, said once (operator 2026-11-26).
+                yield Static(
+                    Text.assemble(
+                        (_say("agent_in_progress_mark"), _style("info")),
+                        " = ",
+                        _say("agent_in_progress"),
+                    ),
+                    id="dlegend",
+                )
                 yield Static("", id="dnote")
                 with Horizontal(id="dbar"):
                     yield Static(_tab_hint("tab_hint_delegation"), id="dkeys")
                     with Horizontal(id="dbuttons"):
-                        yield Button(_say("button_save"), variant="primary", id="dsave")
-                        yield Button(_say("button_cancel"), id="dcancel")
+                        yield Button(_say("button_close"), id="dcancel")
 
     def on_mount(self) -> None:
+        self._show_turn()
         self.run_worker(self._check_claude(), group="claude", exclusive=True)
-        table = self.query_one("#selected", ModelTable)
-        table.border_title = _say("order_title")
-        table.set_entries(self._selection.entries)
-        self._fit_order()
-        # The keyboard goes to the list without scrolling the switch away.
-        table.query_one("#mt-rows", DataTable).focus(scroll_visible=False)
+        # The switches are drawn in the theme's colours: a new theme redraws them.
+        self.app.theme_changed_signal.subscribe(self, lambda _theme: self._show_turn())
+        self.query_one("#dturn", ToggleSwitch).focus(scroll_visible=False)
         if not self.reading:
             self._empty_note()
 
-    def _first_read_shown(self) -> None:
-        super()._first_read_shown()
-        self._empty_note()
+    def on_descendant_focus(self, _event: events.DescendantFocus) -> None:
+        self._mark_current()
+
+    def _mark_current(self) -> None:
+        """Mark the row whose switch has the keyboard, and no other."""
+        focused = self.focused
+        for row in self.query(".agent-row"):
+            row.set_class(focused is not None and focused.parent is row, "-current")
+
+    def selection_read(self, selection: ModelTuiSelection) -> None:
+        super().selection_read(selection)
+        with contextlib.suppress(NoMatches):
+            self._empty_note()
 
     def _empty_note(self) -> None:
         if not self._selection.entries:
             self.query_one("#dnote", Static).update(
                 Text(tui_design().delegation.no_models, style=_style("warning"))
             )
+
+    @staticmethod
+    def _name_text(agent: ModelTuiDelegationAgent) -> Text:
+        """Its name; an agent whose integration is in progress carries the
+        mark the bottom line explains."""
+        text = Text(agent.name)
+        if not agent.live:
+            text.append(" ")
+            text.append(_say("agent_in_progress_mark"), style=_style("info"))
+        return text
 
     async def _check_claude(self) -> None:
         """Fill the Claude Code line: shown only when Claude Code is not ready."""
@@ -2362,8 +2731,58 @@ class DelegationScreen(_TabbedScreen[None]):
         widget.display = state != "ready"
 
     def action_flip(self) -> None:
-        """Space switches both: on when any is off, otherwise off."""
-        self.set_all(not all(self._boxes().values()))
+        """Space switches the agent whose switch has the keyboard."""
+        focused = self.focused
+        if isinstance(focused, ToggleSwitch) and focused.id != "dturn":
+            self._flip_agent(str(focused.name))
+            return
+        self._flip_claude()
+
+    def on_toggle_switch_pressed(self, event: ToggleSwitch.Pressed) -> None:
+        if event.switch.id == "dturn":
+            self._flip_claude()
+        else:
+            self._flip_agent(str(event.switch.name))
+
+    def _flip_claude(self) -> None:
+        """Claude Code's switch applies at once: on when it is off, otherwise
+        off (OMN-26688: no Save)."""
+        if self._busy:
+            return
+        on = not all(self._boxes().values())
+        if on and not self._selection.entries:
+            self._note(tui_design().delegation.no_models, "warning")
+            return
+        self.set_all(on)
+        self._switching = True
+        self._show_turn()
+        self._run(self._switch)
+
+    def _flip_agent(self, key: str) -> None:
+        """An agent whose integration is in progress: its switch moves and is
+        remembered; nothing is sent, and the note says so."""
+        on = not self._agents.get(key, False)
+        self._agents[key] = on
+        AgentStore.save(self._agents)
+        self._show_agents()
+        name = next(a.name for a in tui_design().delegation.agents if a.key == key)
+        said = _say("agent_on_note" if on else "agent_off_note", agent=name)
+        self._note(said, "info" if on else "muted")
+
+    async def _switch(self, app: OnexTui) -> Text | str | None:
+        """Apply the flip; afterwards the toggle shows the state as read, so a
+        switch that failed or was refused shows the state it stayed in."""
+        try:
+            return await self._save(app)
+        finally:
+            self._switching = False
+            self._sync_switches()
+            self._show_turn()
+
+    def _sync_switches(self) -> None:
+        """Each switch to the state as last read."""
+        for key, value in self._saved_boxes().items():
+            self.query_one(f"#use-{key}", Switch).value = value
 
     def set_all(self, value: bool) -> None:
         for switch in self.query(".hook-switch Switch").results(Switch):
@@ -2439,6 +2858,11 @@ class DelegationScreen(_TabbedScreen[None]):
             (_say(word), _style(colour)),
         )
 
+    def _hook_problem(self, key: str) -> bool:
+        """The hook's line shows only when something is wrong: delegation is
+        on and Claude Code lacks the hook or has it paused (OMN-26688)."""
+        return self._enabled and self._hooks.get(key) in ("missing", "paused")
+
     def show_state(
         self, delegation: DelegationState | None, hooks: dict[str, str]
     ) -> None:
@@ -2452,9 +2876,9 @@ class DelegationScreen(_TabbedScreen[None]):
         if not list(self.query("#on-state")):  # not composed: compose draws it
             return
         for hook in tui_design().delegation.hooks:
-            self.query_one(f"#hook-{hook.key}", Static).update(
-                self._hook_text(hook.key)
-            )
+            line = self.query_one(f"#hook-{hook.key}", Static)
+            line.update(self._hook_text(hook.key))
+            line.display = self._hook_problem(hook.key)
         if untouched:
             for key, value in self._saved_boxes().items():
                 self.query_one(f"#use-{key}", Switch).value = value
@@ -2465,11 +2889,72 @@ class DelegationScreen(_TabbedScreen[None]):
         self.query_one("#on-state", Static).update(self._state_text())
         self._show_turn()
 
-    def _show_turn(self) -> None:
-        """The button names what pressing it does: switch off while on, else on."""
-        self.query_one("#dturn", Button).label = _say(
-            "turn_off" if self.any_on() else "turn_on"
+    def _claude_look(self) -> tuple[bool | None, str]:
+        """Claude Code's switch: on or off, or no side and a word while a
+        switch runs or the state is not read."""
+        if self._switching:
+            return None, _say("toggle_switching")
+        if self._saved is None:
+            return None, _say("toggle_reading")
+        if self._saved == "unknown":
+            return None, _say("toggle_unread")
+        on = self.any_on()
+        return on, _say("toggle_on" if on else "toggle_off")
+
+    def toggle_paint(self, on: bool | None) -> dict[str, str]:
+        """A switch's colours in the open theme: a green knob and word on a
+        dark green track when on; grey otherwise, its knob lighter than its
+        word."""
+        found = self.app.get_css_variables()
+        theme = tui_design().theme
+
+        def colour(name: str) -> str:
+            return found.get(name) or str(getattr(theme, name.replace("-", "_")))
+
+        if on:
+            green = colour("success")
+            return {"track": colour("toggle-on"), "knob": green, "ink": green}
+        muted = colour("muted")
+        try:
+            knob = Color.parse(muted).blend(Color.parse(colour("foreground")), 0.35).hex
+        except Exception:  # an ANSI colour has no shade to blend
+            knob = muted
+        return {"track": colour("toggle-off"), "knob": knob, "ink": muted}
+
+    def _count_text(self) -> Text:
+        """How many agents are switched on, of all listed."""
+        agents = tui_design().delegation.agents
+        on = int(self._claude_look()[0] is True) + sum(
+            self._agents.get(agent.key, False) for agent in agents if not agent.live
         )
+        return Text(
+            _say("agents_enabled", on=on, total=len(agents)), style=_style("muted")
+        )
+
+    def _show_turn(self) -> None:
+        """Claude Code's switch shows the state: knob right and green on, left
+        and grey off, no knob while a switch runs or the state is not read."""
+        # One line, its ends round where the terminal draws them (cli_toggle).
+        switch = self.query_one("#dturn", ToggleSwitch)
+        on, word = self._claude_look()
+        switch.draw(on, word, self.toggle_paint(on))
+        switch.set_class(on is None, "-busy")
+        switch.set_class(on is True, "-on")
+        switch.set_class(on is False, "-off")
+        self._show_agents()
+
+    def _show_agents(self) -> None:
+        """Each agent in progress as switched, and the count."""
+        paint = {True: self.toggle_paint(True), False: self.toggle_paint(False)}
+        for agent in tui_design().delegation.agents:
+            if agent.live:
+                continue
+            on = self._agents.get(agent.key, False)
+            word = _say("toggle_on" if on else "toggle_off")
+            self.query_one(f"#agent-{agent.key}", ToggleSwitch).draw(
+                on, word, paint[on]
+            )
+        self.query_one("#dcount", Static).update(self._count_text())
 
     def action_save(self) -> None:
         """Switch here and stay; the outcome shows on this tab."""
@@ -2508,24 +2993,9 @@ class DelegationScreen(_TabbedScreen[None]):
             ModelTuiDelegationChoice(on=True, commands=words.enable)
         )
 
-    def _show_selection(self) -> None:
-        super()._show_selection()
-        self.query_one("#selected", ModelTable).set_entries(self._selection.entries)
-        self._fit_order()
-
-    def _fit_order(self) -> None:
-        """No model yet: no empty order box; the note says to add one."""
-        self.query_one("#selected").display = self.reading or bool(
-            self._selection.entries
-        )
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "dcancel":
             self._close()
-        elif event.button.id == "dturn":
-            self.action_flip()
-        else:
-            self.action_save()
 
     def action_cancel(self) -> None:
         self._close()
@@ -2555,9 +3025,10 @@ class ModelPickScreen(_TabbedScreen[None]):
     """
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
-        Binding("a", "auto", _say("header_auto"), show=False),
-        Binding("r,delete", "remove", _say("button_remove"), show=False),
+        Binding("a", "auto", show=False),
+        Binding("r,delete", "remove", show=False),
         Binding("d", "details", "Details", show=False),
+        Binding("plus", "add_models", show=False),
     ]
 
     def __init__(self, selection: ModelTuiSelection) -> None:
@@ -2607,6 +3078,8 @@ class ModelPickScreen(_TabbedScreen[None]):
         self._empty_note()
 
     def _empty_note(self) -> None:
+        if self._kept_outcome is not None:  # a save's outcome says more
+            return
         if not self._selection.entries:
             self._note(_say("nothing_set_up"), "warning")
 
@@ -2669,6 +3142,18 @@ class ModelPickScreen(_TabbedScreen[None]):
         if self._removing is not None:
             self._removing = None
             self.query_one("#pnote", Static).update("")
+
+    def outcome(self, line: Text | str) -> None:
+        """A save's outcome, from the add-models screen it came from; it
+        stays until the next action says something."""
+        self._kept_outcome = line
+        self._note(line)
+
+    _kept_outcome: Text | str | None = None
+
+    def action_add_models(self) -> None:
+        """+ adds models: providers are chosen on Config, models here after."""
+        self._leave("config")
 
     def action_remove(self) -> None:
         """R asks; R again on the same row removes that model (from that server)."""
@@ -3154,6 +3639,35 @@ class StatusStore:
             )
         except (OSError, ValueError, AttributeError):
             return ModelTuiStatus()
+
+
+class AgentStore:
+    """The agents whose integration is in progress that the user switched on
+    or off on the Delegation tab (OMN-26688), kept for the next start."""
+
+    _path = Path.home() / ".config" / "onex" / "tui-agents.json"
+
+    @classmethod
+    def load(cls) -> dict[str, bool]:
+        try:
+            document = json.loads(cls._path.read_text())
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(document, dict):
+            return {}
+        return {
+            str(key): value
+            for key, value in document.items()
+            if isinstance(value, bool)
+        }
+
+    @classmethod
+    def save(cls, agents: dict[str, bool]) -> None:
+        try:
+            cls._path.parent.mkdir(parents=True, exist_ok=True)
+            cls._path.write_text(json.dumps(agents, sort_keys=True))
+        except OSError:
+            _LOG.warning("could not remember the agent switches", exc_info=True)
 
 
 class LaunchStore:
@@ -3691,7 +4205,7 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
     put(
         x_bracket,
         middle,
-        draw.junction if words.pulse else tui_design().glyphs.dot_on,
+        draw.junction if words.pulse else design.glyphs.dot_on,
         line if words.pulse else accent,
     )
     rest_text = (
@@ -3713,20 +4227,17 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
             text_at(x_out + 2, mid, label, rest_text[index])
     if words.pulse:
         if local < left_gap:
-            put(x_task + task_w + local, middle, tui_design().glyphs.dot_on, accent)
+            put(x_task + task_w + local, middle, design.glyphs.dot_on, accent)
         elif local < left_gap + mid_gap:
             put(
-                x_hub + hub_w + (local - left_gap),
-                middle,
-                tui_design().glyphs.dot_on,
-                accent,
+                x_hub + hub_w + (local - left_gap), middle, design.glyphs.dot_on, accent
             )
         elif local < left_gap + mid_gap + branch_steps:
             cells = branch_cells(target)
             x, y = cells[min(local - left_gap - mid_gap, len(cells) - 1)]
-            put(x, y, tui_design().glyphs.dot_on, accent)
+            put(x, y, design.glyphs.dot_on, accent)
     else:
-        put(x_task + task_w + left_gap // 2, middle, tui_design().glyphs.dot_on, accent)
+        put(x_task + task_w + left_gap // 2, middle, design.glyphs.dot_on, accent)
     text = Text(no_wrap=True)
     for row in grid:
         for char, style in row:
@@ -4206,8 +4717,10 @@ class OnexTui(App[int]):
         list_models: ListModels | None = None,
         load_index: LoadIndex | None = None,
         read_server: ReadServer | None = None,
+        stored_key: StoredKey | None = None,
     ) -> None:
         super().__init__(ansi_color=tui_design().theme.paint().ansi)
+        self._stored_key: StoredKey | None = stored_key
         self._load_index: LoadIndex = load_index or _default_index
         self._read_server: ReadServer = read_server or _default_read_server
         design = tui_design()
@@ -4233,6 +4746,9 @@ class OnexTui(App[int]):
                     variables={
                         "border": tokens.border,
                         "chip": tokens.chip,
+                        "muted": tokens.muted,
+                        "toggle-on": tokens.toggle_on,
+                        "toggle-off": tokens.toggle_off,
                         "route-cheap": tokens.route_cheap,
                         "route-fallback": tokens.route_fallback,
                     },
@@ -4249,9 +4765,11 @@ class OnexTui(App[int]):
             from omnibase_core.cli.cli_commands import cli
 
             root = cli
-        self._commands = tuple(
-            c for c in command_tree(root) if not tui_design().replaces(c.path)
-        )
+        # OMN-26688: only what the prompt can run is loaded (the customer
+        # commands, less those a tab replaces); loading every onex command
+        # held the first frame back by seconds.
+        self._commands = command_tree(root, keep=_runnable)
+        self._cli_root = root
         self._runner: ProtocolTuiRunner = runner or HandlerOnexCommand()
         #: The app made its own runner, the real CLI, which is slow to start.
         self._own_runner = runner is None
@@ -4278,6 +4796,7 @@ class OnexTui(App[int]):
         self._recall = 0
         #: Whether the last /config save set up every choice.
         self.setup_ok = False
+        self.setup_passed = False
         #: The setup as last read, so a tab opens at once and refreshes after.
         self._selection: ModelTuiSelection | None = None
         #: The setup read started with the app, so the first tab need not wait
@@ -4883,6 +5402,31 @@ class OnexTui(App[int]):
             return text
         return f"/{palette.get_option_at_index(palette.highlighted).id}"
 
+    def _names_a_command(self, words: list[str]) -> bool:
+        """Whether ``words`` start with a real onex command the TUI did not load.
+
+        Only the commands on the path are loaded, and only now (OMN-26688).
+        """
+        command: click.Command = self._cli_root
+        ctx = click.Context(command, info_name="onex")
+        found = False
+        path: tuple[str, ...] = ()
+        for word in words:
+            path = (*path, word)
+            if not isinstance(command, click.Group) or tui_design().replaces(path):
+                break
+            try:
+                sub = command.get_command(ctx, word)
+            except Exception:  # an extension that fails to load names nothing
+                break
+            if sub is None or sub.hidden:
+                break
+            ctx = click.Context(sub, parent=ctx, info_name=word)
+            command = sub
+            if not isinstance(sub, click.Group) or sub.invoke_without_command:
+                found = True
+        return found
+
     def _resolve(self, words: list[str]) -> ModelTuiCommand | None:
         known = {entry.path: entry for entry in self._commands}
         for size in range(len(words), 0, -1):
@@ -4952,7 +5496,9 @@ class OnexTui(App[int]):
             return
         entry = self._resolve(words)
         if entry is None:
-            self._write(_say("no_match", command=" ".join(words)))
+            known = self._names_a_command(words)
+            key = "not_a_tui_command" if known else "no_match"
+            self._write(_say(key, command=" ".join(words)))
             return
         if not _is_customer_command(entry.path):
             self._write(_say("not_a_tui_command", command=" ".join(words)))
@@ -5117,10 +5663,9 @@ class OnexTui(App[int]):
         if name == "config":
             return cast(
                 Screen[object],
-                SetupScreen(
+                ProvidersScreen(
                     self._runner,
                     self._list_models,
-                    self._load_index,
                     self._read_server,
                     selection,
                 ),
@@ -5144,6 +5689,38 @@ class OnexTui(App[int]):
         if name == "themes":
             return cast(Screen[object], ThemeScreen(selection))
         return cast(Screen[object], ModelPickScreen(selection))
+
+    async def open_add_models(
+        self,
+        provider: str | None = None,
+        *,
+        url: str | None = None,
+        key: SecretStr | None = None,
+    ) -> None:
+        """The Model tab's add-models screen on ``provider``, in place of the open
+        tab: its models are read there, with ``key``, its saved key or ``url``
+        (operator 2026-11-26: "when we add api key models fetch in model tab")."""
+        screen = SetupScreen(
+            self._runner,
+            self._list_models,
+            self._load_index,
+            self._read_server,
+            self._selection or ModelTuiSelection(),
+            provider=provider,
+            url=url,
+            key=key,
+            stored_key=self._stored_key,
+        )
+        if self._selection is None:  # not read yet: fill in when it lands
+            screen.reading = True
+            self.run_worker(
+                self._fill_when_read(cast(Screen[object], screen)), group="first-read"
+            )
+        if len(self.screen_stack) < 2:
+            await self.push_screen(screen)
+        else:
+            await self.switch_screen(screen)
+        self.tab_pending = None
 
     async def switch_tab(self, name: str) -> None:
         """Swap the open tab for another: the next one is read first, so the
@@ -5277,6 +5854,8 @@ class OnexTui(App[int]):
         # A stored model is not chosen again on a retry, even if its test
         # failed; a choice the CLI refused stays chosen for the retry.
         self.setup_ok = bool(lines) and not refused_any
+        #: Stored and every model's test passed: the add screen moves on.
+        self.setup_passed = self.setup_ok and all_ok
         if not lines:
             return None
         outcome = Text("\n").join(lines)
@@ -5383,6 +5962,17 @@ class OnexTui(App[int]):
         if said:  # an unreachable server is asked again next time
             self._said[key] = (time.monotonic(), said)
         return said
+
+    def get_theme_variable_defaults(self) -> dict[str, str]:
+        """onex's own variables for a theme that does not set them, such as
+        the kept ANSI themes (OMN-26688: the delegation toggle's colours)."""
+        theme = tui_design().theme
+        return {
+            **super().get_theme_variable_defaults(),
+            "muted": theme.muted,
+            "toggle-on": theme.toggle_on,
+            "toggle-off": theme.toggle_off,
+        }
 
     async def apply_delegation(
         self, choice: ModelTuiDelegationChoice | None
@@ -5613,9 +6203,7 @@ class OnexTui(App[int]):
             else _say("last_run_unmeasured", model=model)
         )
         self._last_run = self._last_run_short + (
-            f"{_say('hint_separator')}{_say('run_id', run=run_id[:8])}"
-            if run_id
-            else ""
+            _say("hint_separator") + _say("run_id", run=run_id[:8]) if run_id else ""
         )
         self._render_status()
 

@@ -25,7 +25,6 @@ from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup impor
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
-    ModelProvider,
 )
 
 
@@ -79,7 +78,7 @@ def add_model_to_key(provider: str, model_options: tuple[str, ...]) -> None:
         model_keys.model_handler(),
         ModelModelSetupRequest(
             operation="add_models",
-            provider=cast(ModelProvider, name),
+            provider=name,
             models=tuple(model_options),
         ),
     )
@@ -98,7 +97,7 @@ def reorder_models(provider: str, models: tuple[str, ...]) -> None:
         model_keys.model_handler(),
         ModelModelSetupRequest(
             operation="reorder",
-            provider=cast(ModelProvider, provider.lower()),
+            provider=provider.lower(),
             models=models,
         ),
     )

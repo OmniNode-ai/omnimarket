@@ -75,10 +75,11 @@ def test_onex_models_add_accepts_reflection() -> None:
         timeout=120,
     )
     assert shown.returncode == 0, shown.stderr
-    # Click wraps the choice list mid-word, so read it with all spaces removed.
-    choice = re.search(r"\{([a-z_|]+)\}", "".join(shown.stdout.split()))
-    assert choice is not None, shown.stdout
-    assert "reflection" in choice.group(1).split("|")
+    # OMN-26688: the usage says PROVIDER and the help names each provider.
+    said = " ".join(shown.stdout.split())
+    providers = re.search(r"PROVIDER is ([a-z_, ]+?) or the id", said)
+    assert providers is not None, shown.stdout
+    assert "reflection" in re.split(r",\s*|\s+or\s+", providers.group(1))
 
 
 def test_the_row_posts_to_reflections_openai_endpoint() -> None:

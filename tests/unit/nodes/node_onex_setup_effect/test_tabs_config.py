@@ -68,7 +68,7 @@ def _app() -> OnexTui:
 
 
 async def _open(pilot, app: OnexTui, *, key: str | None = _KEY) -> None:
-    await sup.open_tab(pilot, app, "config")
+    await sup.open_add_models(pilot, app)
     app.screen.query_one("#provider").value = "openrouter"
     await pilot.pause()
     if key is not None:
@@ -82,56 +82,6 @@ def _line(text: str, needle: str) -> str:
         if needle in line:
             return line
     raise AssertionError(f"no line holds {needle!r}:\n{text}")
-
-
-@pytest.mark.parametrize("size", sup.SIZES)
-async def test_title_and_step_counter_follow_the_work(size: tuple[int, int]) -> None:
-    """B1: step 1 until models are found, 2 once listed, 3 once one is ticked."""
-    app = _app()
-    async with app.run_test(size=size) as pilot:
-        await _open(pilot, app, key=None)
-        first = sup.screen_text(app)
-        await _open(pilot, app)
-        listed = sup.screen_text(app)
-        await pilot.press("space")
-        await sup.settle(pilot)
-        ticked = sup.screen_text(app)
-    for text, step in ((first, 1), (listed, 2), (ticked, 3)):
-        row = _line(text, "Add models")
-        assert f"step {step} of 3" in row, row
-        assert row.index("Add models") < row.index(f"step {step} of 3")
-    assert "Models for delegation" not in first
-
-
-@pytest.mark.parametrize("size", sup.SIZES)
-async def test_provider_list_has_radio_markers(size: tuple[int, int]) -> None:
-    """B2: one filled marker on the chosen provider, hollow ones on the rest."""
-    app = _app()
-    async with app.run_test(size=size) as pilot:
-        await _open(pilot, app, key=None)
-        text = sup.screen_text(app)
-    assert "● OpenRouter" in text
-    assert "○ Google Gemini" in text
-    assert "▐" not in text
-    assert "▌" not in text
-
-
-@pytest.mark.parametrize("size", sup.SIZES)
-async def test_key_shows_dots_and_a_valid_mark_only_after_a_list_was_read(
-    size: tuple[int, int],
-) -> None:
-    """B3: dots, never the key; the mark follows the list, not the typing."""
-    app = _app()
-    async with app.run_test(size=size) as pilot:
-        await _open(pilot, app, key=None)
-        before = sup.screen_text(app)
-        await _open(pilot, app)
-        after = sup.screen_text(app)
-    assert "✓ valid" not in before
-    assert "••••" in after
-    assert "✓ valid" in after
-    assert _KEY not in after
-    assert "secret" not in after
 
 
 @pytest.mark.parametrize("size", sup.SIZES)

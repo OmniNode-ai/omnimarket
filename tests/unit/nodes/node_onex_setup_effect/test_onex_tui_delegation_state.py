@@ -36,7 +36,6 @@ from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus, Onex
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import tui_design
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
     _log_text,
-    _press,
     _root,
     _Runner,
     _selected_rows,
@@ -396,11 +395,11 @@ async def test_save_checks_claude_code_again() -> None:
         await _settle(pilot, 4)
         await _open_tab(pilot)
         app.screen.set_all(True)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         await _settle(pilot)
         refused = _switches(runner)
         rows[("delegation", "status")] = _status_doc("off")  # the user installed it
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         await _settle(pilot)
         line = _text(app, "#claude")
     assert refused == []
@@ -483,7 +482,7 @@ async def test_a_failed_save_quotes_the_delegation_commands_own_fix(
         await _settle(pilot, 4)
         await _open_tab(pilot)
         app.screen.set_all(switch_on)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         await _settle(pilot)
         note = _text(app, "#dnote")
     assert expected in note, note

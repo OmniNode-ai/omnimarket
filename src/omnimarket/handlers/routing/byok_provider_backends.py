@@ -89,6 +89,7 @@ meters per model, the model.
 
 from __future__ import annotations
 
+import copy
 import logging
 import re
 from collections.abc import Callable, Iterable, Mapping
@@ -99,6 +100,11 @@ from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+from omnimarket.handlers.routing.byok_catalog_providers import (
+    load_byok_catalog_providers,
+)
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 
 logger = logging.getLogger(__name__)
 
@@ -302,10 +308,12 @@ class ModelByokProviderBackend(BaseModel):
     model_preference: tuple[ModelByokModelPreference, ...] = Field(min_length=1)
     #: OMN-20990. How the customer's key is presented to ``models_url``.
     #: ``bearer`` sends ``Authorization: Bearer <key>`` (OpenRouter, z.ai,
-    #: Google's OpenAI-compatible surface, OpenAI). ``x_api_key`` sends
+    #: OpenAI, Reflection, Hopscotch). ``x_api_key`` sends
     #: ``x-api-key: <key>``, the only header Anthropic's own list-models
-    #: endpoint takes an API key in.
-    models_auth: Literal["bearer", "x_api_key"] = "bearer"
+    #: endpoint takes an API key in. ``x_goog_api_key`` sends
+    #: ``x-goog-api-key: <key>`` to Google's native list (OMN-26688), so the
+    #: key is never in the URL.
+    models_auth: Literal["bearer", "x_api_key", "x_goog_api_key"] = "bearer"
     #: OMN-20990. Non-secret headers ``models_url`` requires besides the key
     #: (Anthropic's ``anthropic-version``). Never a credential: the key is only
     #: ever sent by ``models_auth``.
@@ -689,6 +697,61 @@ def _read_catalog(path: Path) -> dict[str, ModelByokProviderBackend]:
     return _default_plan_rows(_read_plan_catalog(path))
 
 
+#: OMN-26688. The one plan a provider on the shipped models.dev list is offered under.
+CATALOG_LIST_PLAN = "api"
+
+
+def _catalog_list_rows(
+    declared: Mapping[tuple[str, str], ModelByokProviderBackend],
+) -> dict[tuple[str, str], ModelByokProviderBackend]:
+    """A row per provider on the shipped models.dev list, under its own id (OMN-26688).
+
+    Each is shaped like the generic OpenAI-compatible row, except that its URL is
+    the list's fixed one and never one typed in at registration. A provider this
+    file declares keeps its own row; an id on neither still resolves to nothing.
+    """
+    names = {provider for provider, _ in declared}
+    backend_ids = {row.backend_id for row in declared.values()}
+    rows: dict[tuple[str, str], ModelByokProviderBackend] = {}
+    generic = declared.get(("openai_compatible", "by_url"))
+    if generic is None:
+        raise ByokCatalogError(
+            "the generic openai_compatible by_url row is missing, "
+            "so the models.dev list has no shape to copy"
+        )
+    base = generic.model_dump(mode="json", exclude_unset=True)
+    base.pop("endpoint_from_registration", None)
+    for listed in load_byok_catalog_providers().values():
+        if listed.id in names:
+            continue
+        if listed.backend_id in backend_ids:
+            raise ByokCatalogError(
+                f"the models.dev list's {listed.id!r} would reuse backend_id "
+                f"{listed.backend_id!r}, which a declared row already has"
+            )
+        row_dict = copy.deepcopy(base)
+        row_dict.update(
+            {
+                "provider": listed.id,
+                "plan": CATALOG_LIST_PLAN,
+                "mirrors_house_rung": False,
+                "backend_id": listed.backend_id,
+                "endpoint_url": listed.endpoint_url,
+                "models_url": listed.models_url,
+                "key_page": listed.doc,
+            }
+        )
+        windows = row_dict.get("limit_model", {}).get("windows", [])
+        for window in windows:
+            window["source"] = (
+                f"{listed.name}'s own limits; the models.dev list states none."
+            )
+        rows[(listed.id, CATALOG_LIST_PLAN)] = ModelByokProviderBackend.model_validate(
+            row_dict
+        )
+    return rows
+
+
 @lru_cache(maxsize=1)
 def load_byok_plan_catalog() -> dict[tuple[str, str], ModelByokProviderBackend]:
     """Load and cache every declared ``(provider, plan)`` row (OMN-20157).
@@ -696,7 +759,13 @@ def load_byok_plan_catalog() -> dict[tuple[str, str], ModelByokProviderBackend]:
     Same caching contract as :func:`load_byok_provider_catalog`; call
     ``load_byok_plan_catalog.cache_clear()`` in tests that rewrite the file.
     """
-    return _read_plan_catalog(CATALOG_PATH)
+    declared = _read_plan_catalog(CATALOG_PATH)
+    # OMN-26688: then each provider on the shipped models.dev list.
+    rows = {**_catalog_list_rows(declared), **declared}
+    # OMN-26688: a provider whose feature flag is unset has no backend.
+    return {
+        key: row for key, row in rows.items() if provider_turned_off(key[0]) is None
+    }
 
 
 @lru_cache(maxsize=1)
@@ -717,7 +786,13 @@ def load_byok_provider_catalog() -> dict[str, ModelByokProviderBackend]:
             provider and plan twice, or declares a multi-plan provider without
             exactly one default plan.
     """
-    return _read_catalog(CATALOG_PATH)
+    declared = _read_plan_catalog(CATALOG_PATH)
+    rows = {
+        **_default_plan_rows(_catalog_list_rows(declared)),
+        **_default_plan_rows(declared),
+    }
+    # OMN-26688: a provider whose feature flag is unset has no backend.
+    return {p: row for p, row in rows.items() if provider_turned_off(p) is None}
 
 
 def _read_not_offered(path: Path) -> dict[str, ModelByokNotOfferedProvider]:
@@ -728,7 +803,8 @@ def _read_not_offered(path: Path) -> dict[str, ModelByokNotOfferedProvider]:
             f"BYOK provider catalog at {path} has a 'not_offered' key that is "
             "not a list."
         )
-    offered = _read_catalog(path)
+    # OMN-26688: a provider on the shipped models.dev list is offered too.
+    offered = {*_read_catalog(path), *load_byok_catalog_providers()}
     declined: dict[str, ModelByokNotOfferedProvider] = {}
     for entry in entries:
         try:
@@ -895,6 +971,11 @@ def key_provider_hint(value: str, for_provider: str | None = None) -> str | None
     catalog = load_byok_provider_catalog()
     selected = catalog.get(for_provider) if for_provider is not None else None
     if selected is not None and selected.endpoint_from_registration:
+        return None
+    # OMN-26688: models.dev states no key shape for a listed provider, and many
+    # (DeepSeek among them) issue keys starting sk-, as OpenAI does; a key for
+    # one is never refused for looking like another provider's.
+    if selected is not None and selected.provider in load_byok_catalog_providers():
         return None
     matches = [
         (len(prefix), row.provider)

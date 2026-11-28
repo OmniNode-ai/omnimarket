@@ -39,10 +39,14 @@ async def _rows(
     listing = rows_by_command or _selected_rows(connection=False)
     app = _app(_Runner([], by_command=listing))
     async with app.run_test(size=size) as pilot:
-        await _type(pilot, command)
+        await _type(pilot, "/model" if command == "+" else command)
         await pilot.press("enter")
         for _ in range(10):
             await pilot.pause(0.05)
+        if command == "+":  # the Model tab's add-models screen (OMN-26688)
+            await app.open_add_models()
+            for _ in range(10):
+                await pilot.pause(0.05)
         rows = [
             "".join(segment.text for segment in strip)
             for strip in app.screen._compositor.render_strips()
@@ -65,8 +69,8 @@ def _row_with(rows: list[str], *words: str) -> int | None:
 @pytest.mark.parametrize("size", _SIZES)
 async def test_config_footer_is_one_row_at_the_bottom(size: tuple[int, int]) -> None:
     """L1."""
-    rows, last, _ = await _rows("/config", size, "#form")
-    hints = _row_with(rows, "tab next · space tick · ctrl+s save · esc close")
+    rows, last, _ = await _rows("+", size, "#form")
+    hints = _row_with(rows, "space tick · ctrl+s save · esc back to providers")
     buttons = _row_with(rows, "Save", "Cancel")
     assert hints is not None, "\n".join(rows)
     assert buttons is not None, "\n".join(rows)
@@ -77,7 +81,7 @@ async def test_config_footer_is_one_row_at_the_bottom(size: tuple[int, int]) -> 
 
 async def test_config_none_yet_is_not_green() -> None:
     """L2."""
-    _, _, ok = await _rows("/config", (140, 46), probe="#basket")
+    _, _, ok = await _rows("+", (140, 46), probe="#basket")
     assert ok
 
 
@@ -109,9 +113,10 @@ async def test_delegation_is_boxed_with_one_footer_row(size: tuple[int, int]) ->
     words = tui_design().words
     title = _row_with(rows, tui_design().delegation.title)
     assert title is not None
-    assert "╭" in rows[title - 1], rows[title - 1]  # the state box opens above it
-    assert _row_with(rows, words["order_title"]) is not None
-    row = _row_with(rows, "esc close", "Save", "Cancel")
+    assert "/20 enabled" in rows[title], rows[title]  # the count on its row
+    assert _row_with(rows, "Claude Code") is not None
+    assert _row_with(rows, words["order_title"]) is None  # no models table
+    row = _row_with(rows, "esc close", "Close")
     assert row is not None, "\n".join(rows)
     assert row == last, (row, last)
 

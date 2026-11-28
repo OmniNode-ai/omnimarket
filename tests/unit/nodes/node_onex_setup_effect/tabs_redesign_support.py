@@ -100,6 +100,14 @@ async def open_tab(pilot: Pilot[int], the_app: OnexTui, name: str) -> None:
     await settle(pilot)
 
 
+async def open_add_models(pilot: Pilot[int], the_app: OnexTui) -> None:
+    """The Model tab's add-models screen on the fixed selection (OMN-26688)."""
+    await settle(pilot, 4)
+    the_app._selection = selection()
+    await the_app.open_add_models()
+    await settle(pilot)
+
+
 def screen_text(the_app: OnexTui) -> str:
     """Every line the screen draws, as text (what the user reads)."""
     strips = the_app.screen._compositor.render_strips()
