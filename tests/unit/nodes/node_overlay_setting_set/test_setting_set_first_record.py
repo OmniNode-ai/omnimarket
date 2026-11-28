@@ -108,3 +108,16 @@ async def test_overlay_declaring_no_first_document_still_refuses_an_empty_store(
     with pytest.raises(OverlayNotInStoreError):
         await handler.handle(req("goal_scope_ticket_rule", "ticket_roots", ["OMN-1"]))
     assert bus.published == []
+
+
+async def test_claude_tier_first_record_holds_the_tier_row() -> None:
+    """The first set of a Claude tier row on a store with no record creates the document, not a missing-parent refusal."""
+    row = {"credential_order": ["subscription"]}
+    handler, bus, _ = build(live={})
+    result = await handler.handle(
+        req("claude_harness_tiers", "tiers.harness-claude-sonnet", row)
+    )
+    assert result.previous_present is False
+    ((_, raw),) = bus.on(result.loaded_topic)
+    document = json.loads(raw)["document"]
+    assert document == {"schema_version": 1, "tiers": {"harness-claude-sonnet": row}}

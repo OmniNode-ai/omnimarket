@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
-from click.testing import CliRunner
+from click.testing import CliRunner, Result
 
 from omnimarket.handlers.overlay_store.bootstrap_file import (
     BOOTSTRAP_BINDINGS,
@@ -41,7 +43,7 @@ def _store_with_responders() -> InMemoryOverlayStore:
 
 def _run(args: list[str], store: InMemoryOverlayStore | None = None) -> object:
     return CliRunner().invoke(
-        settings_group, args, obj={"store": store or _store_with_responders()}
+        settings_group, args, obj={"table": store or _store_with_responders()}
     )
 
 
@@ -217,7 +219,7 @@ def test_a_successful_set_rewrites_the_overlays_local_file_with_value_and_proven
             "--actor",
             "lane-7",
         ],
-        obj={"store": _store_with_responders()},
+        obj={"table": _store_with_responders()},
         env={"ONEX_SKILL_OVERLAY_ROOTS": str(root)},
     )
     assert result.exit_code == 0, result.output
@@ -252,7 +254,7 @@ def test_a_second_set_keeps_the_earlier_provenance_line(
                 "--actor",
                 actor,
             ],
-            obj={"store": _store_with_responders()},
+            obj={"table": _store_with_responders()},
             env={"ONEX_SKILL_OVERLAY_ROOTS": str(root)},
         )
         assert result.exit_code == 0, result.output
@@ -275,7 +277,7 @@ def test_a_failed_set_leaves_the_local_file_alone(
     result = CliRunner().invoke(
         settings_group,
         ["set", "delegation_check_responders", "responders", '["new"]', "--actor", "x"],
-        obj={"store": _store_with_responders()},
+        obj={"table": _store_with_responders()},
         env={"ONEX_SKILL_OVERLAY_ROOTS": str(root)},
     )
     assert result.exit_code == 65
@@ -289,8 +291,195 @@ def test_a_set_with_no_local_overlay_file_succeeds_and_says_nothing_was_rewritte
     result = CliRunner().invoke(
         settings_group,
         ["set", "delegation_check_responders", "responders", '["new"]', "--actor", "x"],
-        obj={"store": _store_with_responders()},
+        obj={"table": _store_with_responders()},
         env={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "empty")},
     )
     assert result.exit_code == 0, result.output
     assert "no local overlay file" in result.output
+
+
+def _seed_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    root = _overlay_root(tmp_path)
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    bootstrap = tmp_path / "bootstrap.env"
+    bootstrap.write_text(
+        "".join(f"{name}=v-{name}\n" for name in BOOTSTRAP_BINDINGS), encoding="utf-8"
+    )
+    return bootstrap
+
+
+def _pipeline(table: InMemoryOverlayStore, writes: list[object]) -> dict[str, object]:
+    async def write(record: Mapping[str, Any]) -> None:
+        writes.append(record)
+        await table.write_version(dict(record))
+
+    return {"table": table, "seed_write": write}
+
+
+def _seed(bootstrap: Path, obj: dict[str, object]) -> Result:
+    return CliRunner().invoke(
+        settings_group, ["seed", "--bootstrap-file", str(bootstrap)], obj=obj
+    )
+
+
+def test_seed_loads_the_overlay_default_once_and_a_second_run_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bootstrap = _seed_env(tmp_path, monkeypatch)
+    writes: list[object] = []
+    obj = _pipeline(InMemoryOverlayStore(), writes)
+    result = _seed(bootstrap, obj)
+    assert result.exit_code == 0, result.output
+    assert "seeded\tdelegation_check_responders" in result.output
+    assert len(writes) == 1
+    again = _seed(bootstrap, obj)
+    assert again.exit_code == 0, again.output
+    assert len(writes) == 1
+    assert "kept\tdelegation_check_responders" in again.output
+
+
+def test_seed_refuses_to_overwrite_a_live_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bootstrap = _seed_env(tmp_path, monkeypatch)
+    store = _store_with_responders()  # live: [a, b]; the file default is [old]
+    writes: list[object] = []
+    result = _seed(bootstrap, _pipeline(store, writes))
+    assert result.exit_code == 0, result.output
+    assert writes == []
+    assert "kept\tdelegation_check_responders" in result.output
+    record = asyncio.run(store.read_current("delegation_check_responders"))
+    assert record is not None
+    assert record["document"]["responders"] == ["a", "b"]
+
+
+def test_seed_reads_the_bootstrap_path_from_the_provision_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bootstrap = _seed_env(tmp_path, monkeypatch)
+    home = tmp_path / "roots" / "node_settings_store_provision_effect"
+    home.mkdir()
+    (home / "overlay.yaml").write_text(
+        f"bootstrap_file: {bootstrap}\n", encoding="utf-8"
+    )
+    writes: list[object] = []
+    obj = _pipeline(InMemoryOverlayStore(), writes)
+    result = CliRunner().invoke(settings_group, ["seed"], obj=obj)
+    assert result.exit_code == 0, result.output
+    assert len(writes) == 1
+
+
+def test_seed_with_no_declared_bootstrap_path_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_env(tmp_path, monkeypatch)
+    monkeypatch.delenv("ONEX_BOOTSTRAP_FILE", raising=False)
+    result = CliRunner().invoke(
+        settings_group, ["seed"], obj={"table": InMemoryOverlayStore()}
+    )
+    assert result.exit_code != 0
+    assert "node_settings_store_provision_effect" in result.output
+
+
+class _LoopBoundStore:
+    """A store whose connection belongs to the first event loop that touches it, as a Valkey client's does (OMN-24028)."""
+
+    def __init__(self, inner: InMemoryOverlayStore | None = None) -> None:
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._inner = inner or InMemoryOverlayStore()
+
+    def _bind(self) -> None:
+        running = asyncio.get_running_loop()
+        if self._loop is None:
+            self._loop = running
+        if running is not self._loop:
+            raise RuntimeError("the connection is bound to another event loop")
+
+    async def read_current(self, overlay_id: str) -> object:
+        self._bind()
+        return await self._inner.read_current(overlay_id)
+
+    async def write_version(self, record: Mapping[str, Any]) -> object:
+        self._bind()
+        return await self._inner.write_version(dict(record))
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._inner, name)
+
+
+def test_list_reads_every_setting_on_one_event_loop() -> None:
+    result = CliRunner().invoke(
+        settings_group, ["list"], obj={"table": _LoopBoundStore()}
+    )
+    assert result.exit_code == 0, result.output
+    assert "<unset>" in result.output
+
+
+def test_seed_reads_every_overlay_on_one_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bootstrap = _seed_env(tmp_path, monkeypatch)
+    writes: list[object] = []
+    table = InMemoryOverlayStore()
+    obj = _pipeline(table, writes)
+    obj["table"] = _LoopBoundStore(table)
+    result = _seed(bootstrap, obj)
+    assert "another event loop" not in result.output
+    assert result.exit_code == 0, result.output
+
+
+def test_seed_agrees_with_the_table_after_one_run_with_an_empty_valkey(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The projection writes the table and nothing writes Valkey: seed compares against the table only (OMN-24028)."""
+    bootstrap = _seed_env(tmp_path, monkeypatch)
+    table = InMemoryOverlayStore()
+    writes: list[object] = []
+    result = _seed(bootstrap, _pipeline(table, writes))
+    assert result.exit_code == 0, result.output
+    assert "SeedDisagreementError" not in result.output
+    held = asyncio.run(table.read_current("delegation_check_responders"))
+    assert held is not None
+    assert held["document"]["responders"] == ["old"]
+
+
+def test_set_then_get_returns_the_value_from_the_table(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table = _store_with_responders()
+
+    def projected_set(argv: list[str]) -> int:
+        value = json.loads(argv[argv.index("--value-json") + 1])
+        asyncio.run(
+            table.write_version(
+                {
+                    "overlay_id": "delegation_check_responders",
+                    "digest": "d2",
+                    "revision": 4,
+                    "loaded_at": datetime(2026, 11, 26, 22, 0, tzinfo=UTC).isoformat(),
+                    "document": {"schema_version": 1, "responders": value},
+                }
+            )
+        )
+        return 0
+
+    monkeypatch.setattr(settings_cli, "_set_main", projected_set)
+    obj = {"table": table}
+    done = CliRunner().invoke(
+        settings_group,
+        [
+            "set",
+            "delegation_check_responders",
+            "responders",
+            '["x", "y"]',
+            "--actor",
+            "t",
+        ],
+        obj=obj,
+    )
+    assert done.exit_code == 0, done.output
+    read = CliRunner().invoke(
+        settings_group, ["get", "delegation_check_responders", "responders"], obj=obj
+    )
+    assert read.exit_code == 0, read.output
+    assert json.loads(read.output) == ["x", "y"]

@@ -40,6 +40,18 @@ requirements:
   acceptance:
   - id: AC9
     statement: 'AC9: the board lab_hosts reader reads the host table through the injected settings store and returns unknown (None), never an empty list, for an absent overlay, a stale heartbeat, an unreachable store and a document that is not a host table -- falsifier: uv run --frozen pytest tests/settings_store/test_host_table_from_store.py -q -n 0 --no-cov -p no:cacheprovider fails when the reader function is absent or returns an empty list for any of those cases'
+- id: req-omn24028-settings-cli-table
+  statement: The onex settings command reads and writes the table the projection writes, never the Valkey store, and its seed verb loads each declared overlay default into that table once.
+  acceptance:
+  - id: AC10
+    statement: 'AC10: onex settings seed loads each declared overlay default through seed_defaults once, keeps a value the table already holds, writes nothing on a second run, and runs every store read and the seed on one event loop -- falsifier: uv run --frozen pytest tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider -k "seed or one_event_loop" fails when the seed verb is absent'
+  - id: AC11
+    statement: 'AC11: onex settings get, list and the seed agreement check read the table the projection writes, a set followed by a get returns the value from the table, and the first set of a Claude harness tier row creates its document -- falsifier: uv run --frozen pytest tests/settings_store/test_settings_cli.py tests/settings_store/test_bootstrap_seed_idempotent.py tests/unit/nodes/node_overlay_setting_set/test_setting_set_first_record.py -q -n 0 --no-cov -p no:cacheprovider -k "set_then_get or empty_valkey or table_holds_each_default or table_that_lacks or claude_tier_first_record" fails when a read goes to Valkey'
+- id: req-omn24028-store-owned-set-age
+  statement: A set on an overlay only the store writes is not refused for the age of its record; the age bound stays on the settings the loader asserts.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: a set on an overlay the loader does not list succeeds on a record idle for hours, a set on a loader-asserted overlay is still refused past the bound, and the contract names which settings keep the bound -- falsifier: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set/test_setting_set_store_owned_age.py -q -n 0 --no-cov -p no:cacheprovider fails when the age bound refuses a store-owned overlay'
 evidence_requirements:
 - kind: tests
   description: The projection key tests and the overlay store golden and error chain tests pass at the pushed head.
@@ -135,4 +147,49 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/settings_store/test_host_table_from_store.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24028-settings-seed-verb
+  description: 'onex settings seed loads each declared overlay default into the store through seed_defaults, keeps a value the store already holds, writes nothing on a second run, and reads the bootstrap file path from the store provision node overlay; the seed tests in test_settings_cli.py fail with no such command on origin/dev'
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider -k "seed or one_event_loop"
+    cwd: .
+- id: dod-omn24028-settings-cli-one-event-loop
+  description: 'onex settings list and seed run every store read and the seed on one event loop, so a Valkey-backed store answers more than the first read; the two one_event_loop tests in test_settings_cli.py fail with the bound-to-another-event-loop error when each read opens its own loop'
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider -k one_event_loop
+    cwd: .
+- id: dod-omn24028-settings-table-of-record
+  description: 'onex settings get, list and the seed agreement check read the table the projection writes (its snapshot), never Valkey: seed agrees after one run with a Valkey that holds nothing, and a set followed by a get returns the value from the table; the two new tests and the reworked seed tests fail on the pushed parent head with the seed refusing on the settings store'
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_settings_cli.py tests/settings_store/test_bootstrap_seed_idempotent.py -q -n 0 --no-cov -p no:cacheprovider -k "set_then_get or empty_valkey or table_holds_each_default or table_that_lacks"
+    cwd: .
+- id: dod-omn24028-claude-tier-first-record
+  description: 'the first set of a Claude harness tier row on a store with no claude_harness_tiers record creates the document with an empty tiers mapping instead of refusing with SettingParentMissingError; the new test fails on the parent head with that refusal'
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set/test_setting_set_first_record.py -q -n 0 --no-cov -p no:cacheprovider -k claude_tier_first_record
+    cwd: .
+- id: dod-omn24028-store-owned-set-age
+  description: 'a set on goal_scope_ticket_rule with a record 34 hours old succeeds, a set on runtime_contract_hotload past the bound is still refused with LiveRecordStaleError, and the contract keeps the bound on exactly the settings the loader lists; two of the three tests fail on the pushed parent head with LiveRecordStaleError and a missing loader_asserted line'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set/test_setting_set_store_owned_age.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .

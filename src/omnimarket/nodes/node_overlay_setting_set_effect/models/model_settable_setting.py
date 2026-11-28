@@ -33,6 +33,11 @@ class ModelSettableSetting(BaseModel):
     first_document: dict[str, JsonValue] | None = None
     # True: the value is the whole document (a mapping), not one key of it; each top-level key is marked as set.
     whole_document: bool = False
+    # True: node_overlay_store_load_effect lists this overlay and asserts it each hour, so a live record older than the contract's
+    # max_live_age_s means the read missed the newest one. False: only a set writes it, so its record is as old as the last set and
+    # the age bound does not apply (the store's revision check still refuses a write built on a replaced record). Every row of one
+    # overlay id carries the same value.
+    loader_asserted: bool = True
 
     @model_validator(mode="after")
     def _placeholders_agree(self) -> ModelSettableSetting:
