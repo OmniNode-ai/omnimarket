@@ -223,3 +223,12 @@ dod_evidence:
     reason: The live ticket OMN-26656 no longer carries AC5 (read 2026-11-28T03:15Z), so the claim has no criterion to bind. dod-omn26656-own-key-never-leaves-provider still runs its own tests.
     retired_by: q-close26656-0312
     retired_at: '2026-11-28T03:30:00Z'
+- id: dod-omn26656-ac1-recheck-after-ac5-retirement
+  description: 'AC1: the same code-class check set that the merged response-contract fix put in force still refuses a failing named test and accepts a passing one, read again at the head that retires AC5. The selected tests fail with the merged fix omnimarket#6779 reverted.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_response_contract_adds_code_checks_omn26656.py -q --no-cov -n 0 -p no:randomly -k "gate_refuses or gate_accepts or bus or local_path or checks_in_force"
+    cwd: .
