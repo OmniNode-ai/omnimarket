@@ -1,0 +1,96 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Panel Answer Effect (OMN-19998, the board's panel work state)
+#
+# Read-only answer node: for each panel the overlay declares it reads the one row the panel's
+# projector holds and answers the request with the held state (READ/STALE with the body, or UNREAD
+# with the row's last refusal). A request that does not validate, a panel the overlay does not
+# declare, or a store that cannot be read is refused with one fixed reason; no caller text is ever
+# echoed.
+name: node_floor_panel_answer_effect
+contract_name: node_floor_panel_answer_effect
+node_name: node_floor_panel_answer_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Answers one panel request with the state of the row the panel's projector holds: READ or STALE
+  with the held body and its age against the entry's budget, or UNREAD with the row's last
+  refusal. The panels and their budgets are the panel overlay's; this contract and the handler
+  hold no value.
+
+handler:
+  module: omnimarket.nodes.node_floor_panel_answer_effect.handlers.handler_floor_panel_answer
+  class: HandlerFloorPanelAnswer
+  input_model: omnimarket.models.floor_panel.model_floor_panel_command.ModelFloorPanelCommand
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: floor_panel.answer
+      message_category: command
+      handler:
+        name: HandlerFloorPanelAnswer
+        module: omnimarket.nodes.node_floor_panel_answer_effect.handlers.handler_floor_panel_answer
+      event_model:
+        name: ModelFloorPanelCommand
+        module: omnimarket.models.floor_panel.model_floor_panel_command
+      event_type: omnimarket.floor-panel
+      description: Answer one declared panel.
+
+input_model:
+  name: ModelFloorPanelCommand
+  module: omnimarket.models.floor_panel.model_floor_panel_command
+output_model:
+  name: ModelFloorPanelAnswer
+  module: omnimarket.models.floor_panel.model_floor_panel_answer
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.floor-panel.v1
+  terminal_events:
+    success: onex.evt.omnimarket.floor-panel-answered.v1
+
+terminal_event: onex.evt.omnimarket.floor-panel-answered.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.floor-panel.v1
+  publish_topics:
+    - onex.evt.omnimarket.floor-panel-answered.v1
+
+published_events:
+  - event_type: FloorPanelAnswered
+    topic: onex.evt.omnimarket.floor-panel-answered.v1
+    description: The answer of one panel, or its named refusal.
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.floor-panel-answered.v1
+
+# Where the declared panels are read from: the panel overlay found under ONEX_SKILL_OVERLAY_ROOTS
+# or the file the env var names.
+runtime:
+  panel_overlay: {overlay_id: node_floor_panel_answer_effect, file_env: ONEX_FLOOR_PANEL_OVERLAY, model: omnimarket.models.work_state_panel.model_work_state_panel_overlay.ModelWorkStatePanelOverlay}
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  runtime_profiles:
+    - effects
+
+# The broker grants the node's two topics need (OMN-24005 coverage gate): the runtime login reads the command and writes the answer.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.floor-panel.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.floor-panel.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-panel-answered.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-panel-answered.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka

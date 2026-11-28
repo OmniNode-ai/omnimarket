@@ -1,0 +1,85 @@
+schema_version: 1.0.0
+ticket_id: OMN-24527
+title: 'Board panel from a held work-state row: reducer, answer node, first slice'
+summary: 'Two new nodes: node_work_state_panel_reducer folds each work-state projected event into one runtime-persisted row (state_io, version compare), and node_floor_panel_answer_effect answers a bus command with read, stale or unread from that row. Nothing existing is amended; the old board keeps answering.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- events
+- public_api
+requirements:
+- id: req-omn24527-panel-from-held-row
+  statement: One board panel is read from a row the runtime holds, never from the Mac job.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the reducer node decides each work-state event as accepted, duplicate, superseded, refused or ignored, and its decision order test fails under a timestamp-only last-arrival comparison -- falsifier: pytest tests/nodes/node_work_state_panel_reducer/test_decision.py -q'
+  - id: AC2
+    statement: 'AC2: two concurrent saves through the runtime''s own state wrapper never repeat or lose an epoch, and a lost compare leaves the row unchanged -- falsifier: pytest tests/nodes/node_work_state_panel_reducer/test_production_wrapper_cas.py -q'
+  - id: AC3
+    statement: 'AC3: the answer node returns read, stale or unread with a fixed refusal text that echoes nothing the caller sent, and a failing new panel never changes the old floor route -- falsifier: pytest tests/nodes/node_floor_panel_answer_effect -q'
+  - id: AC4
+    statement: 'AC4: the reducer and the answer node installed from one revision on a lab runtime hold a row from a real producer event and return the same receipt after a restart -- falsifier: ask the answer node on the lab runtime after stopping the reducer''s consumer; it must fail with no held row inside the deadline'
+  - id: AC5
+    statement: 'AC5: integrated: the running lab runtime answers the floor panel command with state read and an as_of equal to the as_of of an event read back from the work-state topic -- falsifier: the same command with the reducer''s consumer stopped returns unread'
+evidence_requirements:
+- kind: tests
+  description: The reducer and answer node tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_work_state_panel_reducer tests/nodes/node_floor_panel_answer_effect tests/test_work_state_panel_models.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24527-ac1
+  description: Decision order, key and body, opaque refusal ids, dropped cause text, future dated, naive timestamps, UTC canonical form, each with a named failing control.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_panel_reducer/test_decision.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24527-ac2
+  description: 'Two racing saves through the runtime''s own wrapper in both winning orders; controls: persist without the version check, a loser that never reloads, a write on a lost compare.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_panel_reducer/test_production_wrapper_cas.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24527-ac3
+  description: Panel states on an injected clock, the fixed request-invalid answer, the panel field never echoed, named refusals, isolation from the old route with coupling and blocking controls.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_panel_answer_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24527-ac4
+  description: The unit-level restart proof only; the runtime restart reading is not yet taken (see the pull request).
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_panel_reducer/test_codec_and_handler.py -k restart -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24527-ac5
+  description: The golden and error chains only; the running-runtime reading is not yet taken (see the pull request).
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_panel_reducer/test_golden_chain_work_state_panel_reducer.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24527-integration-proof
+  description: Run the reducer, answer node and model tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check. The running-runtime readings of AC4 and AC5 are not taken by it.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24527 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_state_panel_reducer tests/nodes/node_floor_panel_answer_effect tests/test_work_state_panel_models.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
