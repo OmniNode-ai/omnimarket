@@ -22,7 +22,7 @@ class leaves up to its contract ``holdback`` free slots to the classes above it 
 from __future__ import annotations
 
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from importlib import resources
 from typing import Literal
 
@@ -33,7 +33,11 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
-from omnimarket.models.model_priority_rules import PRIORITY_OTHER, ModelPriorityRules
+from omnimarket.models.model_priority_rules import (
+    PRIORITY_OTHER,
+    ModelPriorityRules,
+    ModelRedCheckReading,
+)
 from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_placement import (
     NODE_PACKAGE,
     HostTableError,
@@ -60,6 +64,38 @@ def load_priority_rules() -> ModelPriorityRules:
 
 
 LANE_PRIORITY_OVERLAY_ID = "lane_priority"
+
+#: A source's reader: the check ids it finds red; it raises when the source cannot be read.
+RedCheckSource = Callable[[], Iterable[str]]
+
+
+def read_red_checks(
+    rules: ModelPriorityRules, readers: Mapping[str, RedCheckSource]
+) -> ModelRedCheckReading:
+    """The red declared checks, read from the contract's ``red_checks.sources`` in order (OMN-26624).
+
+    The first source that reads decides. A source with no reader, or whose reader raises, is recorded and the next
+    is tried; when none reads, the reading is ``unreadable`` with every reason and is never an empty red list."""
+    declared = rules.red_checks
+    if declared is None:
+        return ModelRedCheckReading(read_from="none")
+    why: list[str] = []
+    for source in declared.sources:
+        reader = readers.get(source)
+        if reader is None:
+            why.append(f"{source}: no reader")
+            continue
+        try:
+            found = tuple(reader())
+        except Exception as exc:
+            why.append(f"{source}: {type(exc).__name__}: {str(exc)[:160]}")
+            continue
+        red = tuple(
+            sorted({d for c in found if (d := declared.declared(str(c))) is not None})
+        )
+        return ModelRedCheckReading(red=red, read_from=source)
+    return ModelRedCheckReading(unreadable="; ".join(why))
+
 
 # A ticket's own line: ``Class: factory-fix``, as the ticket text quotes it (a ``> `` quote, a list marker or
 # backticks around the name do not matter).
@@ -88,15 +124,37 @@ def load_factory_epics(environ: Mapping[str, str] | None = None) -> tuple[str, .
 
 
 def priority_class_args(
-    ticket_text: str | None, rules: ModelPriorityRules | None = None
+    ticket_text: str | None,
+    rules: ModelPriorityRules | None = None,
+    *,
+    brief_text: str | None = None,
+    red_check_reading: ModelRedCheckReading | None = None,
 ) -> list[str]:
     """``["--priority-class", <class>]`` for the class a ticket's ``Class:`` line names, else ``[]``.
 
     A dispatcher appends this to the runner command: a ticket with no line, or a line naming a name the
-    contract does not list, passes nothing, and the runner takes the repository rule and reports it."""
+    contract does not list, passes nothing, and the runner takes the repository rule and reports it.
+    OMN-26624: a ticket text or brief naming a red declared check (``red_check_reading``) passes the contract's
+    red-check class when that outranks the class line's."""
+    rules = rules or load_priority_rules()
     named = class_line(ticket_text)
-    classes = (rules or load_priority_rules()).classes
-    return ["--priority-class", named] if named in classes else []
+    cls = named if named in rules.classes else None
+    declared = rules.red_checks
+    request = ModelLanePriorityRequest(
+        ticket_text=ticket_text,
+        brief_text=brief_text,
+        red_check_reading=red_check_reading,
+    )
+    if (
+        declared is not None
+        and HandlerLabLanePriority(rules).red_checks_of(request)
+        and (
+            cls is None
+            or rules.classes.index(declared.class_) < rules.classes.index(cls)
+        )
+    ):
+        cls = declared.class_
+    return ["--priority-class", cls] if cls else []
 
 
 class HandlerLabLanePriority:
@@ -121,8 +179,54 @@ class HandlerLabLanePriority:
         """The class the contract lists ``repo`` under, else ``other``."""
         return self._rules.class_of_repo(repo)
 
+    def red_checks_named(self, request: ModelLanePriorityRequest) -> tuple[str, ...]:
+        """The declared delegation checks the lane's ticket text or brief names, red or not."""
+        declared = self._rules.red_checks
+        if declared is None:
+            return ()
+        return declared.named_in(request.ticket_text, request.brief_text)
+
+    def red_checks_of(self, request: ModelLanePriorityRequest) -> tuple[str, ...]:
+        """The checks the lane names that the reading shows red; an unread or unreadable result shows none."""
+        reading = request.red_check_reading
+        if reading is None or reading.unreadable is not None:
+            return ()
+        red = {c.upper() for c in reading.red}
+        return tuple(c for c in self.red_checks_named(request) if c.upper() in red)
+
+    def red_check_report(self, request: ModelLanePriorityRequest) -> str | None:
+        """What to report when the lane names a declared check and its result was not read, else None."""
+        named = self.red_checks_named(request)
+        reading = request.red_check_reading
+        if not named:
+            return None
+        if reading is None:
+            return (
+                f"RED-CHECK-UNREAD: the lane names {', '.join(named)} and the caller read no check result; "
+                "the check is not read as green"
+            )
+        if reading.unreadable is not None:
+            return (
+                f"RED-CHECK-UNREADABLE: the lane names {', '.join(named)} and no check result could be read "
+                f"({reading.unreadable}); the check is not read as green"
+            )
+        return None
+
     def classify(self, request: ModelLanePriorityRequest) -> tuple[str, str]:
-        """The lane's class and its source: declared, class-line, ticket, factory-epic, repository or default."""
+        """The lane's class and its source: red-check, declared, class-line, ticket, factory-epic, repository or default.
+
+        A red check named by the lane takes the contract's class only when that outranks the class the lane would take."""
+        cls, source = self._classify_without_checks(request)
+        declared = self._rules.red_checks
+        if declared is not None and self.red_checks_of(request):
+            classes = self._rules.classes
+            if classes.index(declared.class_) < classes.index(cls):
+                return declared.class_, "red-check"
+        return cls, source
+
+    def _classify_without_checks(
+        self, request: ModelLanePriorityRequest
+    ) -> tuple[str, str]:
         rules = (
             self._rules.with_repos(request.private_repos)
             if request.private_repos
@@ -148,7 +252,11 @@ class HandlerLabLanePriority:
         self, request: ModelLanePriorityRequest, cls: str, source: str
     ) -> str | None:
         """What to report when the ticket's text was read and gave no class, else None."""
-        if request.ticket_text is None or source in ("declared", "class-line"):
+        if request.ticket_text is None or source in (
+            "declared",
+            "class-line",
+            "red-check",
+        ):
             return None
         named = class_line(request.ticket_text)
         if named is None:
@@ -187,6 +295,8 @@ class HandlerLabLanePriority:
             source=source,
             refusal=refusal,
             fallback=self.fallback_report(request, cls, source),
+            red_checks=self.red_checks_of(request),
+            red_check_report=self.red_check_report(request),
         )
 
 
@@ -196,4 +306,5 @@ __all__ = [
     "load_factory_epics",
     "load_priority_rules",
     "priority_class_args",
+    "read_red_checks",
 ]

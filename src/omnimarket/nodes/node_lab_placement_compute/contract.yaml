@@ -46,6 +46,9 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: "Direct Python invocation to judge host table rows (handle) or place a unit on the advertising pool hosts (place), with the table and weight read through injected sources (onex lab-work and the plugin's lab-run judge command)."
+  callers:
+    - path: src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py
+    - path: src/omnimarket/lab_work/cli.py
 descriptor:
   node_archetype: compute
   purity: pure
@@ -108,6 +111,10 @@ priority:
   repos:
     feature: [omnibase_infra, omnibase_core, omnimarket, omniclaude, omnidash]
   tickets: {}
+  red_checks:
+    class: factory-unblock
+    checks: [C11, C12, C13, C14, C15, C16, C17, C28, C29, C30]
+    sources: [regression-event, probe-results]
 # PLUGIN PARITY (OMN-22124). An installed plugin tree is compared with its shipped revision file by file. These
 # entries directly under the install path are runtime markers Claude Code writes, never plugin content: `.in_use`
 # while a session has the plugin loaded, `.orphaned_at` once the directory is superseded. The same name at any
