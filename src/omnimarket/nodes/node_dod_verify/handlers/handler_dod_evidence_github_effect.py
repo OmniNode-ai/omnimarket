@@ -106,6 +106,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceUnverifiableCause,
 )
 from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
+    EnumRepoContractReadStatus,
     ModelDurableEvidenceGateRun,
     ModelDurableEvidenceGateRunCommand,
     ModelRepoContractRead,
@@ -670,6 +671,13 @@ class HandlerDodEvidenceGithubEffect:
             return self._list_contract_repo_merged_prs(command)
         if command.operation == EnumDodEvidenceGithubOperation.READ_REPO_CONTRACT:
             return self._read_repo_contract(command)
+        if command.operation == EnumDodEvidenceGithubOperation.LIST_TICKET_MERGED_PRS:
+            return self._list_ticket_merged_prs(command)
+        if (
+            command.operation
+            == EnumDodEvidenceGithubOperation.READ_REPO_DEFAULT_BRANCH_CONTRACT
+        ):
+            return self._read_repo_default_branch_contract(command)
         if (
             command.operation
             == EnumDodEvidenceGithubOperation.READ_REPO_EVIDENCE_CHECK_RUNS
@@ -1296,6 +1304,72 @@ class HandlerDodEvidenceGithubEffect:
             correlation_id=command.correlation_id,
             operation=command.operation,
             merged_prs=tuple(merged),
+        )
+
+    def _list_ticket_merged_prs(
+        self, command: ModelDodEvidenceGithubLookupCommand
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        """OMN-25366: every merged PR naming the ticket in any product clone.
+
+        Unlike ``_list_contract_repo_merged_prs`` this does not start from the
+        repositories whose default branch carries the contract: a ticket's work
+        can merge into a repository that holds no contract for it, and the caller
+        must tell that from a ticket with no merged PR at all. Local reads only
+        (the watcher's records and the clones' squash commits); a PR whose head,
+        merge commit or merge time is unreadable leaves the list unresolved.
+        """
+        ticket_id = command.ticket_id or ""
+        repos = self._local.product_repositories()
+        if repos is None:
+            logger.warning("merged PRs of %s unresolved: no $OMNI_HOME", ticket_id)
+            return ModelDodEvidenceGithubLookupResultEvent(
+                correlation_id=command.correlation_id,
+                operation=command.operation,
+                resolved=False,
+                detail="no canonical clone root ($OMNI_HOME) to search",
+            )
+        pattern = _ticket_token_pattern(ticket_id)
+        merged: list[ModelTicketMergedPr] = []
+        for repo in repos:
+            for candidate in self._local.merged_pr_candidates(repo, ticket_id, pattern):
+                number = candidate.get("number")
+                if not isinstance(number, int) or number <= 0:
+                    continue
+                pr = self._merged_pr_facts(repo, number)
+                if isinstance(pr, str):
+                    logger.warning("merged PRs of %s unresolved: %s", ticket_id, pr)
+                    return ModelDodEvidenceGithubLookupResultEvent(
+                        correlation_id=command.correlation_id,
+                        operation=command.operation,
+                        resolved=False,
+                        detail=pr,
+                    )
+                if pr is not None:
+                    merged.append(pr)
+        return ModelDodEvidenceGithubLookupResultEvent(
+            correlation_id=command.correlation_id,
+            operation=command.operation,
+            merged_prs=tuple(merged),
+        )
+
+    def _read_repo_default_branch_contract(
+        self, command: ModelDodEvidenceGithubLookupCommand
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        """OMN-25366: the contract at the head of the repository's default branch."""
+        repo = command.repo or ""
+        ticket_id = command.ticket_id or ""
+        sha, read = self._local.default_branch_contract(repo, ticket_id)
+        if read is None:
+            read = ModelRepoContractRead(
+                status=EnumRepoContractReadStatus.ERROR,
+                error=f"{repo}: default branch head or its contract is not readable",
+            )
+            sha = ""
+        return ModelDodEvidenceGithubLookupResultEvent(
+            correlation_id=command.correlation_id,
+            operation=command.operation,
+            repo_contract=read,
+            read_commit_sha=sha,
         )
 
     def _merged_pr_facts(
