@@ -56,6 +56,11 @@ requirements:
   acceptance:
   - id: AC12
     statement: 'AC12: an accepted code_generation run with passed executed tests records its failed marker rule as scored -- falsifier: the same run records that rule as blocking beside an accepted verdict, or a run without executed tests loses its blocking rule'
+- id: req-omn25856-tenant-plan-assign
+  statement: A bus command with a tenant id and a plan code makes that plan the tenant's one active plan and answers with the plan's entitlements read back, so a tenant whose quota is spent can be moved to a plan that fits through the node, not by hand.
+  acceptance:
+  - id: AC17
+    statement: 'AC17: a plan-assign command writes one active tenant_plans row, a second assign replaces it, an unknown plan is refused with no write, and the answer carries the plan entitlements -- falsifier: two active rows after a second assign, a row written for an unknown plan, or an assigned answer with no entitlement rows'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -220,4 +225,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_verifiable_path_rule_enforcement_omn25856.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-tenant-plan-assign
+  description: The plan-assign node assigns a plan and reads its entitlements back, refuses an unknown plan or tenant with no write, and a second assign ends the previous active row, against a scratch PostgreSQL 16; its contract declares the operator-plane ACL.
+  source: manual
+  binds_ac:
+  - AC17
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_plan_assign_effect/test_contract_shape.py tests/nodes/node_tenant_plan_assign_effect/test_handler_store_unavailable.py tests/nodes/node_tenant_plan_assign_effect/test_golden_chain_tenant_plan_assign_effect.py -q --no-cov -n 0 -p no:randomly
     cwd: .
