@@ -25,6 +25,10 @@ class ModelOverlaySettingSetResult(BaseModel):
     set_at: datetime
     loaded_topic: str
     audit_topic: str
+    # The id the store answered, the revision it committed at and the attempts the set took (a conflict builds it again).
+    write_id: str
+    revision: int
+    attempts: int
 
 
 __all__ = ["ModelOverlaySettingSetResult"]

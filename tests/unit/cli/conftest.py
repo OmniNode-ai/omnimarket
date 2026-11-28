@@ -35,6 +35,17 @@ def _no_network_plan_detection(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def _not_signed_in_to_a_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-26731: a test is not signed in unless it says so.
+
+    ``register-tenant-key`` goes to the gateway when this machine holds a stored
+    sign-in; a lab host that does must not turn the bus-path tests into gateway
+    calls. ``test_omn26731_register_tenant_key_gateway.py`` overrides the stub.
+    """
+    monkeypatch.setattr("omnimarket.cli.cli_secret._signed_in_gateway", lambda: None)
+
+
 def _delivery_not_required(node_id: str, state_root: Path) -> None:
     """Stand in for core's delivery check: these tests read the walk's output, not the bus."""
     del node_id, state_root

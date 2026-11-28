@@ -82,6 +82,14 @@ from omnimarket.models.model_criteria_drift import (
 from omnimarket.models.model_criteria_pins import (
     ModelCriteriaPins,
 )
+from omnimarket.models.model_local_done_gate_receipt import (
+    ModelLocalDoneGateReceipt,
+)
+from omnimarket.models.model_local_done_gate_receipt_store import (
+    ProtocolLocalDoneGateReceiptSource,
+    default_receipt_store,
+    receipt_reads_verified,
+)
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
     SCM_CACHE_DIR_ENV,
 )
@@ -2310,7 +2318,11 @@ class EvidenceCollector:
         *,
         must_fail_runner: ProtocolMustFailTreeRunner | None = None,
         ticket_reader: ProtocolDodTicketCriteriaReader | None = None,
+        local_done_gate_receipts: ProtocolLocalDoneGateReceiptSource | None = None,
     ) -> None:
+        # Receipts local Done gate runs published on the bus; None reads the
+        # store under the evidence home, built on first use.
+        self._local_done_gate_receipts = local_done_gate_receipts
         # OMN-20032 (GC.9): runs one changed test file against the code before
         # the PR. None means the local runner, built on first use from this
         # collector's own lock-exact environments.
@@ -3231,6 +3243,31 @@ class EvidenceCollector:
 
         return failures
 
+    def _local_done_gate_receipt_for(
+        self, ticket_id: str, item_id: str
+    ) -> ModelLocalDoneGateReceipt | None:
+        """The receipt that clears a skipped local_done_gate item, or None.
+
+        Cleared only by a receipt for this ticket, this item id and the contract
+        revision this run resolved, whose latest verdict reads VERIFIED.
+        """
+        subject = self.contract_subject
+        sha = subject.commit_sha if subject is not None else None
+        if sha is None:
+            return None
+        source = self._local_done_gate_receipts
+        if source is None:
+            source = default_receipt_store()
+            if source is None:
+                return None
+            self._local_done_gate_receipts = source
+        return receipt_reads_verified(
+            source.receipts_for(ticket_id),
+            ticket_id=ticket_id,
+            contract_sha=sha,
+            item_id=item_id,
+        )
+
     def _execute_item(
         self,
         item: Any,
@@ -3278,6 +3315,21 @@ class EvidenceCollector:
                     if isinstance(checks, list)
                     else EnumCheckProofClass.INDETERMINATE
                 )
+                receipt = self._local_done_gate_receipt_for(ticket_id, skipped_label)
+                if receipt is not None:
+                    return [
+                        ModelEvidenceCheckResult(
+                            evidence_id=skipped_label,
+                            description=str(item.get("description", skipped_label)),
+                            status=EnumEvidenceCheckStatus.VERIFIED,
+                            proof_class=proof_class,
+                            message=(
+                                "VERIFIED [local_done_gate receipt] -- local Done "
+                                f"gate run {receipt.run_id} on {receipt.host} read "
+                                f"this item verified at contract {receipt.contract_sha}."
+                            ),
+                        )
+                    ]
                 return [
                     ModelEvidenceCheckResult(
                         evidence_id=skipped_label,

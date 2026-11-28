@@ -5,6 +5,18 @@ summary: The lane dispatch effect node gains a J11 join handler. For one merge i
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22961-ac1-accepted-20261127t1745z:
+    - label: AC1
+      criterion_hash: 0f0867991eea6a4d732829eba61cfcd58681dd536e922bf3f1ad4168978af0ce
+      proposed_by: lane=dod-closeout-bind-2026-11-27T1745Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-27T1745Z-c2
+    dod-omn22961-ac2-accepted-20261127t1745z:
+    - label: AC2
+      criterion_hash: 60cecae79c4a10049f633dc371eb550de82cce3b15f63cc1795bb5f733b6266a
+      proposed_by: lane=dod-closeout-bind-2026-11-27T1745Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-27T1745Z-c2
 requirements:
 - id: req-omn22961-j11-join
   statement: A runtime-affecting merge's PASS receipt is consumed by dispatch and a lane starts from a dispatch record, with a golden and an error case.
@@ -29,7 +41,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/integration/test_join_j11.py -q --no-cov -n 0 -p no:randomly -k golden
+    check_value: uv run pytest tests/integration/test_join_j11.py -q --no-cov -n 0 -p no:randomly -k golden
     cwd: .
 - id: dod-omn22961-j11-error
   description: The error join tests pass; with the receipt check removed from the handler all six missing-receipt cases go red because the dispatch effect runs.
@@ -38,7 +50,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/integration/test_join_j11.py -q --no-cov -n 0 -p no:randomly -k error
+    check_value: uv run pytest tests/integration/test_join_j11.py -q --no-cov -n 0 -p no:randomly -k error
     cwd: .
 - id: dod-omn22961-integration-proof
   description: The pushed head ran the J11 join tests and the lane dispatch node suites on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
@@ -53,15 +65,34 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/integration/test_join_j11.py -q --no-cov -n 0 -p no:randomly -k golden
+    check_value: uv run pytest tests/integration/test_join_j11.py -q --no-cov -n 0 -p no:randomly -k golden
     cwd: .
   - check_type: command
     check_value: |-
       env UV_PROJECT_ENVIRONMENT=/tmp/omn22961-venv uv run --frozen --no-dev python -c 'import yaml; from omnimarket.nodes.node_lane_dispatch_effect.handlers.handler_dispatch_join_j11 import HandlerDispatchJoinJ11; from omnimarket.nodes.node_lane_dispatch_effect.models.model_join_j11 import ModelJoinJ11Request, ModelJoinJ11Result; assert callable(HandlerDispatchJoinJ11.handle); c = yaml.safe_load(open("src/omnimarket/nodes/node_lane_dispatch_effect/contract.yaml")); assert c["join_j11"]["join_id"] == "J11", c["join_j11"]; print("J11 join handler and policy resolved")'
+    cwd: .
 - id: dod-omn22961-deploy-source-read
   description: Deploy probe. Reads the J11 join handler from the GitHub contents API at the pull request branch, or at dev once the branch is merged and deleted. It fails while neither ref carries the handler, and runs on the hosted runner with the job token alone; no container pull and no lab route is required. The running wiring on the dev bus is not part of this change.
   source: manual
   checks:
   - check_type: command
     check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lane_dispatch_effect/handlers/handler_dispatch_join_j11.py?ref=omn-22961-join-j11-dispatch" --jq .path || gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lane_dispatch_effect/handlers/handler_dispatch_join_j11.py?ref=dev" --jq .path'
+    cwd: .
+- id: dod-omn22961-ac1-accepted-20261127t1745z
+  description: 'AC1: the golden join tests: a PASS receipt on the required lane for the exact merged sha is consumed, the dispatch effect places the lane, the lane starts from the content-addressed job record it writes, and the started lane reads back with a dispatch record. They fail at collection before omnimarket#6122, which adds the J11 join handler.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/test_join_j11.py -q --no-cov -n 0 -p no:randomly -k golden
+    cwd: .
+- id: dod-omn22961-ac2-accepted-20261127t1745z
+  description: 'AC2: the error join tests: a lane with no dispatch record is named by the reading, and a missing, FAIL, unreadable, other-sha, other-lane or pre-merge receipt starts nothing, runs no command and writes no record. They fail at collection before omnimarket#6122, which adds the J11 join handler.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/test_join_j11.py -q --no-cov -n 0 -p no:randomly -k error
     cwd: .

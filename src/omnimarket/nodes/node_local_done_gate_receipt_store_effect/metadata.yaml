@@ -1,0 +1,20 @@
+name: node_local_done_gate_receipt_store_effect
+version: "1.0.0"
+description: "Keeps the receipt a local_done_gate run published on its verdict, for the hosted verifier"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_local_done_gate_receipt_store_effect: "omnimarket.nodes.node_local_done_gate_receipt_store_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  side_effect_class: filesystem
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "filesystem", "evidence", "done-gate"]
+pack: "data"
+display_name: "Local Done Gate Receipt Store Effect"
+node_role: "effect"
