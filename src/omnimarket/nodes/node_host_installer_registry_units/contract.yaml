@@ -55,15 +55,34 @@ event_bus:
   # `node_canonical_clone_refresh_effect` (host serve processes) read these two command topics and declare no event_bus
   # block, so nothing created them; they are listed here, as node_pr_landing_snapshot_effect lists the tick-facts topic,
   # and never as a subscription: a subscription would make the runtime wire a handler to every request under its own
-  # group. The host installer itself publishes nothing on them.
+  # group. The host installer itself publishes nothing on them. OMN-24612: the two repo-state answer topics
+  # onex.evt.omnimarket.repo-state-query-completed.v1 and onex.evt.omnimarket.repo-state-query-failed.v1 are listed for
+  # the same reason, because the repo-state client reads them, so they must exist before the first answer.
   publish_topics:
     - onex.evt.omnimarket.host-registry-unit-completed.v1
     - onex.cmd.omnimarket.repo-state-query-requested.v1
     - onex.cmd.omnimarket.declared-clone-refresh-requested.v1
+    - onex.evt.omnimarket.repo-state-query-completed.v1
+    - onex.evt.omnimarket.repo-state-query-failed.v1
 externally_consumed_topics:
   - onex.evt.omnimarket.host-registry-unit-completed.v1
   - onex.cmd.omnimarket.repo-state-query-requested.v1
   - onex.cmd.omnimarket.declared-clone-refresh-requested.v1
+  - onex.evt.omnimarket.repo-state-query-completed.v1
+  - onex.evt.omnimarket.repo-state-query-failed.v1
+# OMN-24612: the permission rows the broker permission coverage gate (OMN-24005) asks for the two answer topics this contract lists above.
+# The gate derives WRITE and DESCRIBE for every publish_topics entry (the render contract's derive_publish_operations) and accepts nothing
+# narrower, so a runtime that only provisions these topics still carries the WRITE row here; the answers themselves are written by the lab
+# host logins, whose rows sit in the overlays repository's scope broker_acls_repo_state_serve (declared there, applied by the operator).
+# The runtime's CREATE right is not a row of this block: the topic provisioner holds it for the runtime principal. Follow-up: once the
+# repo-state contract declares its own event_bus publish topics, remove the two answer rows from this contract and this block.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.repo-state-query-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.repo-state-query-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.repo-state-query-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.repo-state-query-failed.v1, operation: DESCRIBE}
 descriptor:
   node_archetype: effect
   purity: effectful
