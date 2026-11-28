@@ -101,12 +101,20 @@ def _resolve_base(base: str) -> str | None:
 
 
 # The receipt gate admits a release cut only while its diff against the merge base
-# stays inside these root paths, so a cut cannot carry a contracts/ file.
-_RELEASE_CUT_PATHS = frozenset({"CHANGELOG.md", "pyproject.toml", "uv.lock"})
+# stays inside these root paths, so a cut cannot carry a contracts/ file. No
+# changelog is listed: the release train reads this set from the checkout and writes
+# CHANGELOG.md into a cut only while it is listed, and the file is removed prose
+# (OMN-25958), so the cut's notes ride in the release pull request body.
+_RELEASE_CUT_PATHS = frozenset({"pyproject.toml", "uv.lock"})
 
 
 def _is_release_cut(sha: str, base: str | None) -> bool:
-    """Whether the diff against the merge base is a root changelog plus optional pins."""
+    """Whether the diff against the merge base is a release cut.
+
+    A cut stays inside the root allowlist and carries a version bump
+    (pyproject.toml); a cut that adds no CHANGELOG.md is a cut (OMN-25958), and
+    one that changes nothing needs no contract either.
+    """
     try:
         base_sha = _resolve_base(base) if base is not None else None
         if base_sha is None:
@@ -116,7 +124,9 @@ def _is_release_cut(sha: str, base: str | None) -> bool:
     except (OSError, subprocess.SubprocessError):
         return False
     paths = {path for path in listing.split("\0") if path}
-    return "CHANGELOG.md" in paths and paths <= _RELEASE_CUT_PATHS
+    if not paths <= _RELEASE_CUT_PATHS:
+        return False
+    return not paths or "pyproject.toml" in paths
 
 
 # GitHub alone commits a squash merge to dev, as this committer, and names the

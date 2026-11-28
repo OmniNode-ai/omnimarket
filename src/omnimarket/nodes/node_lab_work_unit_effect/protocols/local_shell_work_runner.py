@@ -39,6 +39,7 @@ from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit impor
     EnumLabWorkUnitStatus,
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
+    split_env_prefix,
 )
 
 _EXTRA_PATH = ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")
@@ -302,12 +303,19 @@ class LocalShellLabWorkExecutor:
                     EnumLabWorkUnitStatus.INFRA_ERROR,
                     detail=f"worktree add failed: {added.stderr.strip()[:500]}",
                 )
-            exe = shutil.which(request.argv[0], path=env["PATH"])
+            unit_env, command = split_env_prefix(request.argv)
+            if not command:
+                return receipt(
+                    EnumLabWorkUnitStatus.INFRA_ERROR,
+                    detail="env names no command to run after its assignments",
+                )
+            exe = shutil.which(command[0], path=env["PATH"])
             if exe is None:
                 return receipt(
                     EnumLabWorkUnitStatus.INFRA_ERROR,
-                    detail=f"{request.argv[0]!r} is not on this host's PATH",
+                    detail=f"{command[0]!r} is not on this host's PATH",
                 )
+            env.update(unit_env)
             env.update(
                 LAB_WORK_UNIT_ID=request.work_unit_id,
                 LAB_WORK_SHA=request.commit_sha,
@@ -319,7 +327,10 @@ class LocalShellLabWorkExecutor:
                     target = tree / seed.path
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(seed.content, encoding="utf-8")
-            argv = self._draft_argv(request, tree, state_dir)
+            argv = [
+                *command,
+                *self._draft_argv(request, tree, state_dir)[len(request.argv) :],
+            ]
             started = time.monotonic()
             with log.open("wb") as out:
                 process = subprocess.Popen(
