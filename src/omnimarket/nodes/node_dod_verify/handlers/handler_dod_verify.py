@@ -190,6 +190,9 @@ class HandlerDodVerify:
         """
         started_at = datetime.now(tz=UTC)
         contract_subject: ModelDodContractSubject | None = None
+        contract_groups: list[
+            tuple[ModelDodContractSubject, list[ModelEvidenceCheckResult]]
+        ] = []
         # OMN-17022: the first PR/repo lookup failure of this run, as a typed
         # cause. None on the caller-supplied ``evidence_results`` path, which
         # never performed a lookup at all.
@@ -263,6 +266,7 @@ class HandlerDodVerify:
                 # anything reads as "not measured", never as "no checks".
                 acceptance_summary = getattr(collector, "acceptance_summary", None)
                 contract_subject = getattr(collector, "contract_subject", None)
+                contract_groups = list(getattr(collector, "contract_groups", []))
                 # OMN-17022: read the same way — typed provenance the collector
                 # already holds, never a message string parsed back out.
                 lookup_failure_cause = collector.lookup_failure_cause
@@ -845,6 +849,23 @@ class HandlerDodVerify:
         # Built before the state: nothing may branch once the verdict is
         # constructed (test_omn18901 asserts the return is unconditional).
         contract_sha = contract_subject.commit_sha if contract_subject else None
+        # OMN-26725: a multi-contract ticket's aggregate subject is UNBOUND, so
+        # its receipts are one per governing contract, over that contract's own
+        # results under their unprefixed item ids.
+        per_contract = [
+            receipt
+            for subject, group in contract_groups
+            if (
+                receipt := receipt_from_results(
+                    ticket_id=command.ticket_id,
+                    contract_sha=subject.commit_sha,
+                    run_id=str(command.correlation_id),
+                    results=group,
+                    execution_audience=execution_audience,
+                )
+            )
+            is not None
+        ]
         local_done_gate_receipt = receipt_from_results(
             ticket_id=command.ticket_id,
             contract_sha=contract_sha,
@@ -920,6 +941,7 @@ class HandlerDodVerify:
             criteria_delegated=bool(criteria_check and criteria_check.delegated),
             unresolved_cause=unresolved_cause,
             local_done_gate_receipt=local_done_gate_receipt,
+            local_done_gate_receipts=tuple(per_contract),
         )
 
         return state
@@ -1001,6 +1023,8 @@ class HandlerDodVerify:
             criteria_delegated=state.criteria_delegated,
             error_message=state.error_message,
             unresolved_cause=state.unresolved_cause,
+            local_done_gate_receipt=state.local_done_gate_receipt,
+            local_done_gate_receipts=state.local_done_gate_receipts,
         )
 
     def serialize_completed(self, event: ModelDodVerifyCompletedEvent) -> bytes:

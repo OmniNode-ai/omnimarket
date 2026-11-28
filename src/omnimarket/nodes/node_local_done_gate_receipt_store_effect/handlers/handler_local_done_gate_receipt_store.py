@@ -36,9 +36,16 @@ class HandlerLocalDoneGateReceiptStore:
         self, verdict: ModelDodVerifyCompletedEvent | ModelDodVerifyState
     ) -> ModelLocalDoneGateReceiptStored:
         """Store the verdict's receipt, if any, and report whether it was stored."""
+        # OMN-26725: a multi-contract run carries one receipt per contract.
+        stored = [
+            self.store_receipt(receipt)
+            for receipt in (
+                verdict.local_done_gate_receipt,
+                *verdict.local_done_gate_receipts,
+            )
+        ]
         return ModelLocalDoneGateReceiptStored(
-            ticket_id=verdict.ticket_id,
-            stored=self.store_receipt(verdict.local_done_gate_receipt),
+            ticket_id=verdict.ticket_id, stored=any(stored)
         )
 
     def store_receipt(self, receipt: ModelLocalDoneGateReceipt | None) -> bool:
