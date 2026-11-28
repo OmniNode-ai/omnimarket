@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
-from click.testing import CliRunner
+from click.testing import CliRunner, Result
 
 from omnimarket.handlers.overlay_store.bootstrap_file import (
     BOOTSTRAP_BINDINGS,
@@ -307,14 +309,14 @@ def _seed_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _pipeline(table: InMemoryOverlayStore, writes: list[object]) -> dict[str, object]:
-    async def write(record: object) -> None:
+    async def write(record: Mapping[str, Any]) -> None:
         writes.append(record)
-        await table.write_version(record)  # type: ignore[arg-type]
+        await table.write_version(dict(record))
 
     return {"table": table, "seed_write": write}
 
 
-def _seed(bootstrap: Path, obj: dict[str, object]) -> object:
+def _seed(bootstrap: Path, obj: dict[str, object]) -> Result:
     return CliRunner().invoke(
         settings_group, ["seed", "--bootstrap-file", str(bootstrap)], obj=obj
     )
@@ -327,13 +329,13 @@ def test_seed_loads_the_overlay_default_once_and_a_second_run_writes_nothing(
     writes: list[object] = []
     obj = _pipeline(InMemoryOverlayStore(), writes)
     result = _seed(bootstrap, obj)
-    assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
-    assert "seeded\tdelegation_check_responders" in result.output  # type: ignore[attr-defined]
+    assert result.exit_code == 0, result.output
+    assert "seeded\tdelegation_check_responders" in result.output
     assert len(writes) == 1
     again = _seed(bootstrap, obj)
-    assert again.exit_code == 0, again.output  # type: ignore[attr-defined]
+    assert again.exit_code == 0, again.output
     assert len(writes) == 1
-    assert "kept\tdelegation_check_responders" in again.output  # type: ignore[attr-defined]
+    assert "kept\tdelegation_check_responders" in again.output
 
 
 def test_seed_refuses_to_overwrite_a_live_value(
@@ -343,9 +345,9 @@ def test_seed_refuses_to_overwrite_a_live_value(
     store = _store_with_responders()  # live: [a, b]; the file default is [old]
     writes: list[object] = []
     result = _seed(bootstrap, _pipeline(store, writes))
-    assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
+    assert result.exit_code == 0, result.output
     assert writes == []
-    assert "kept\tdelegation_check_responders" in result.output  # type: ignore[attr-defined]
+    assert "kept\tdelegation_check_responders" in result.output
     record = asyncio.run(store.read_current("delegation_check_responders"))
     assert record is not None
     assert record["document"]["responders"] == ["a", "b"]
@@ -397,9 +399,9 @@ class _LoopBoundStore:
         self._bind()
         return await self._inner.read_current(overlay_id)
 
-    async def write_version(self, record: object) -> object:
+    async def write_version(self, record: Mapping[str, Any]) -> object:
         self._bind()
-        return await self._inner.write_version(record)  # type: ignore[arg-type]
+        return await self._inner.write_version(dict(record))
 
     def __getattr__(self, name: str) -> object:
         return getattr(self._inner, name)
@@ -418,11 +420,12 @@ def test_seed_reads_every_overlay_on_one_event_loop(
 ) -> None:
     bootstrap = _seed_env(tmp_path, monkeypatch)
     writes: list[object] = []
-    obj = _pipeline(InMemoryOverlayStore(), writes)
-    obj["table"] = _LoopBoundStore(obj["table"])  # type: ignore[arg-type]
+    table = InMemoryOverlayStore()
+    obj = _pipeline(table, writes)
+    obj["table"] = _LoopBoundStore(table)
     result = _seed(bootstrap, obj)
-    assert "another event loop" not in result.output  # type: ignore[attr-defined]
-    assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
+    assert "another event loop" not in result.output
+    assert result.exit_code == 0, result.output
 
 
 def test_seed_agrees_with_the_table_after_one_run_with_an_empty_valkey(
@@ -433,8 +436,8 @@ def test_seed_agrees_with_the_table_after_one_run_with_an_empty_valkey(
     table = InMemoryOverlayStore()
     writes: list[object] = []
     result = _seed(bootstrap, _pipeline(table, writes))
-    assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
-    assert "SeedDisagreementError" not in result.output  # type: ignore[attr-defined]
+    assert result.exit_code == 0, result.output
+    assert "SeedDisagreementError" not in result.output
     held = asyncio.run(table.read_current("delegation_check_responders"))
     assert held is not None
     assert held["document"]["responders"] == ["old"]
