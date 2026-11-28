@@ -78,6 +78,13 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # ledger row that names it is not lane work that lost its hook events (OMN-22778). False, the default,
     # skips no host. A table that cannot be read is reported and skips nothing.
     skip_unavailable_hosts: bool = False
+    # Which lab host this tick runs on, and which one host sends the lab-wide alarms (quiet-host and
+    # throughput-results read the whole lab, so every host decides the same alarm; OMN-24562). Both come
+    # from the host's overlay, never from code. With a sender declared, a host whose ``host_id`` is not it
+    # decides those alarms and records and sends nothing; host-local alarms are unchanged. None for the
+    # sender means every host sends, which is the single-host deployment.
+    host_id: str | None = None
+    lab_wide_sender_host: str | None = None
     host_drainers: dict[str, ModelHostDrainerCommand] = Field(default_factory=dict)
     capture_repair_state_file: Path = Field(
         default_factory=lambda: (
@@ -162,6 +169,8 @@ class ModelSilentFailureAlarmOptions(BaseModel):
             )
         if self.drainer is not None and self.drainer.host in self.host_drainers:
             raise ValueError("local drainer host must not also have a remote command")
+        if self.lab_wide_sender_host is not None and not self.host_id:
+            raise ValueError("lab_wide_sender_host needs this host's host_id")
         return self
 
     @classmethod

@@ -91,6 +91,11 @@ requirements:
   acceptance:
   - id: AC14
     statement: 'AC14: the census registry unit declares ONEX_WORKSPACE_CONFIG_ROOT as {workspace_config_root} and the rendered service carries it -- falsifier: uv run pytest tests/unit/contracts/test_node_trigger_declarations.py -k workspace_config_root fails when the environment line is removed from the unit'
+- id: req-omn24562-alarm-one-sender
+  statement: A lab-wide silent-failure alarm (quiet-host, throughput-results) is sent once across the hosts that run the alarm, by the one host the overlay declares; a host-local alarm keeps its host dedup.
+  acceptance:
+  - id: AC15
+    statement: 'AC15: two hosts firing the same quiet-host alarm in one window send one message when the overlay declares lab_wide_sender_host, a non-sender host still sends a host-local alarm, and without a declared sender both hosts send -- falsifier: uv run pytest tests/nodes/node_silent_failure_alarm_effect/test_lab_wide_alarm_one_sender_omn24562.py -q fails when the sender gate is removed'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -372,4 +377,14 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/contracts/test_node_trigger_declarations.py -k workspace_config_root -q -n 0 --no-cov -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-alarm-one-sender
+  description: 'AC15: two hosts with their own ledger copy and delivery state send one quiet-host post when a sender host is declared, a non-sender host still sends tick-liveness, and with no sender declared both hosts send (failing control: at the merge base the first test reads two posts).'
+  source: manual
+  binds_ac:
+  - AC15
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_silent_failure_alarm_effect/test_lab_wide_alarm_one_sender_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
