@@ -54,9 +54,9 @@ class ModelBetaProbe(BaseModel):
     # The workflow's schedule (five-field UTC cron). Given, the probe's read is cached for each schedule slot and read from the
     # source again only when a slot passes; absent, the probe is read every cycle (OMN-19998).
     cron: str | None = None
-    # Names a delegation check (C13, C14 ...): the probe is then read from that check's gateway leg, in the delegation check probe
-    # node's run history, and the workflow above is not read (ruling 2026-11-24T13:11:36Z: a check that depends on the cloud is read
-    # through the gateway; the cloud workflow stays a check of the next milestone). ``events`` filters the history's ``event`` too.
+    # Names a delegation check (C13, C14 ...): the probe is then read from that check's newest scheduled run event on the bus topic
+    # the contract names, and the workflow above is not read (ruling 2026-11-24T13:11:36Z: a check that depends on the cloud is read
+    # through the gateway; the cloud workflow stays a check of the next milestone). ``events`` filters the run event's ``event`` too.
     gateway_check: str | None = Field(default=None, min_length=1)
 
     @field_validator("cron")
@@ -184,8 +184,9 @@ class ModelBetaBoardContractRuntime(BaseModel):
     probe_read_timeout_seconds: int = Field(ge=1)
     stage_deadline_seconds: int = Field(ge=1)
     probe_refresh_seconds: int = Field(ge=0)
-    # The delegation check probe node's run history under the registry home, read for a probe that names a ``gateway_check``.
-    gateway_history_relpath: str = Field(min_length=1)
+    # The bus topic the delegation check probe publishes each run on: read for a probe that names a ``gateway_check``, the newest
+    # scheduled run's verdict of that check. The contract names it; no handler holds it and no file path or host is involved.
+    check_result_topic: str = Field(min_length=1)
     # A scheduled run's reading older than this is no reading: the source reads unread, never a stale verdict.
     gateway_reading_max_age_seconds: int = Field(ge=1)
     transport: ModelBetaTransport
@@ -227,6 +228,27 @@ class ModelSourceRead(BaseModel):
     ) -> tuple[ModelReadingPoint, ...]:
         ordered = sorted(value, key=lambda p: p.at, reverse=True)
         return tuple(ordered)
+
+
+class ModelCheckResultRecord(BaseModel):
+    """One run event of the delegation check probe, as published on the check result topic (the fields the board reads)."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    check_id: str = Field(min_length=1)
+    run_id: str = ""
+    created_at: datetime
+    event: str = ""
+    verdict: str = ""
+
+
+class ModelCheckResultRead(BaseModel):
+    """What a read of the check result topic gave: the run events since the bound, or the reason the topic could not be read."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    records: tuple[ModelCheckResultRecord, ...] = ()
+    error: str | None = None
 
 
 class ModelSourceReads(BaseModel):

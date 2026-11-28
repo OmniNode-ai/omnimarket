@@ -29,6 +29,9 @@ from omnimarket.nodes.node_beta_board_effect.handlers.adapter_beta_board_sources
     ssh_argv,
     write_atomic,
 )
+from omnimarket.nodes.node_beta_board_effect.handlers.adapter_check_result_bus import (
+    KafkaCheckResultSource,
+)
 from omnimarket.nodes.node_beta_board_effect.handlers.compute_beta_board import (
     build_board,
 )
@@ -44,6 +47,9 @@ from omnimarket.nodes.node_beta_board_effect.models.model_beta_board import (
     ModelBetaBoardRuntime,
     ModelSourceRead,
     ModelTargetPublish,
+)
+from omnimarket.nodes.node_beta_board_effect.protocols import (
+    ProtocolCheckResultSource,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
@@ -95,10 +101,12 @@ class HandlerBetaBoard:
         clock: Callable[[], datetime] | None = None,
         ledger: ProtocolLedgerRowSource | None = None,
         cache: CachedSourceReader | None = None,
+        check_results: ProtocolCheckResultSource | None = None,
     ) -> None:
         self._rt = runtime or load_runtime()
         self._ledger = ledger
         self._cache = cache
+        self._check_results = check_results or KafkaCheckResultSource()
         self._run = run
         self._copy = copy
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -152,7 +160,15 @@ class HandlerBetaBoard:
 
     def _build(self, rt: ModelBetaBoardRuntime, home: Path) -> ModelBetaBoardResult:
         now = self._clock()
-        probe_reads = refresh_probes(rt, home, now, self._run, self._clock, self._cache)
+        probe_reads = refresh_probes(
+            rt,
+            home,
+            now,
+            self._run,
+            self._clock,
+            self._cache,
+            check_results=self._check_results,
+        )
         if self._cache is not None:
             write_tally_receipt(self._cache, home, BETA_BOARD_STEP)
         write_atomic(

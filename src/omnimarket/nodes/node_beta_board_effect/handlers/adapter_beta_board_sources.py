@@ -21,10 +21,14 @@ from omnimarket.nodes.node_beta_board_effect.models.model_beta_board import (
     ModelBetaBoardRuntime,
     ModelBetaLedgerReading,
     ModelBetaProbe,
+    ModelCheckResultRead,
     ModelReadingPoint,
     ModelSourceRead,
     ModelSourceReads,
     ReadingVerdict,
+)
+from omnimarket.nodes.node_beta_board_effect.protocols import (
+    ProtocolCheckResultSource,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
@@ -171,15 +175,17 @@ def read_probe(
     )
 
 
-def read_gateway_leg(
-    probe: ModelBetaProbe, rt: ModelBetaBoardRuntime, home: Path, now: datetime
+def read_scheduled_run(
+    probe: ModelBetaProbe,
+    rt: ModelBetaBoardRuntime,
+    bus: ModelCheckResultRead,
+    now: datetime,
 ) -> ModelSourceRead:
-    """A probe's readings from the gateway leg of its check: the ``gateway_leg`` of that check's runs in the probe node's run history.
+    """A probe's readings from the run events of its check on the bus topic the contract names: each event's ``verdict``.
 
-    Newest first. A line that is another check's, carries no verdict of ``pass`` or ``fail`` (an unmeasured leg is no reading), has an
-    event the probe excludes or has no readable time is skipped; a history that cannot be read is ``unread``, never a pass.
+    Newest first. An event that is another check's, carries no verdict of ``pass`` or ``fail`` (an unmeasured run is no reading), has
+    an event the probe excludes or no readable time is skipped; a topic that cannot be read is ``unread``, never a pass.
     """
-    path = home / rt.gateway_history_relpath
 
     def unread(reason: str) -> ModelSourceRead:
         return ModelSourceRead(
@@ -190,33 +196,27 @@ def read_gateway_leg(
             reason=reason[:240],
         )
 
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        return unread(
-            f"the check run history cannot be read: {type(exc).__name__} {rt.gateway_history_relpath}"
-        )
+    if bus.error is not None:
+        return unread(bus.error)
     points: list[ModelReadingPoint] = []
-    for raw in text.splitlines():
-        try:
-            line = json.loads(raw)
-        except ValueError:
+    for record in bus.records:
+        if record.check_id != probe.gateway_check:
             continue
-        if not isinstance(line, dict) or line.get("check") != probe.gateway_check:
+        if probe.events and record.event not in probe.events:
             continue
-        if probe.events and str(line.get("event") or "") not in probe.events:
+        # The probe publishes the verdict as its enum value (PASS, FAIL, NOT_MEASURED ...).
+        word = record.verdict.lower()
+        if word not in ("pass", "fail"):
             continue
-        leg = line.get("gateway_leg")
-        if leg not in ("pass", "fail"):
-            continue
-        moment = parse_moment(str(line.get("created_at") or ""))
-        if moment is None:
-            continue
+        moment = record.created_at
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=UTC)
+        verdict: ReadingVerdict = "pass" if word == "pass" else "fail"
         points.append(
             ModelReadingPoint(
                 at=moment,
-                verdict="pass" if leg == "pass" else "fail",
-                ref=f"{probe.gateway_check} gateway leg {line.get('run_id') or ''}".strip(),
+                verdict=verdict,
+                ref=f"{probe.gateway_check} scheduled run {record.run_id}".strip(),
             )
         )
     points.sort(key=lambda p: p.at, reverse=True)
@@ -232,7 +232,7 @@ def read_gateway_leg(
         kind="gateway_leg",
         read="read",
         read_at=now,
-        reason="" if points else "no run of the check has a graded gateway leg",
+        reason="" if points else "no scheduled run of the check is on the bus",
         points=tuple(points[: rt.probe_run_limit]),
     )
 
@@ -403,6 +403,7 @@ def refresh_probes(
     clock: Callable[[], datetime],
     cache: CachedSourceReader | None = None,
     revision_run: CommandRunner | None = None,
+    check_results: ProtocolCheckResultSource | None = None,
 ) -> ModelSourceReads:
     """Refresh the probe reads one at a time, the least recently read first, inside the stage deadline.
 
@@ -420,10 +421,23 @@ def refresh_probes(
             kept[p.id].read_at if p.id in kept else datetime.min.replace(tzinfo=UTC)
         ),
     )
+    bus: ModelCheckResultRead | None = None
     for probe in ordered:
         if probe.gateway_check:
-            # A local file read: no source-control round trip, so no refresh window, cache or stage deadline applies.
-            result[probe.id] = read_gateway_leg(probe, rt, home, now)
+            # One read of the contract's topic serves every such probe: no source-control round trip, so no refresh window, cache or
+            # stage deadline applies. With no source the probe is unread, never a pass.
+            if bus is None:
+                bus = (
+                    check_results.read(
+                        rt.check_result_topic,
+                        now - timedelta(seconds=rt.gateway_reading_max_age_seconds),
+                    )
+                    if check_results is not None
+                    else ModelCheckResultRead(
+                        error="no bus source for the check results"
+                    )
+                )
+            result[probe.id] = read_scheduled_run(probe, rt, bus, now)
             continue
         previous = kept.get(probe.id)
         if (

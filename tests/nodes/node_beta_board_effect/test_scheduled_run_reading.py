@@ -9,7 +9,6 @@ verdict as ``gateway_leg``; the board reads that line. A reading older than two 
 from __future__ import annotations
 
 import copy
-import json
 from datetime import timedelta
 from pathlib import Path
 
@@ -36,12 +35,10 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
     ModelCheckClause,
     ModelDelegationCheckResult,
 )
-from omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick import (
-    append_history,
-)
 from tests.nodes.node_beta_board_effect.support import (
     NOW,
     OVERLAY,
+    FakeCheckResultSource,
     ago,
     run_list_answer,
 )
@@ -97,17 +94,19 @@ def _runtime(check: str):
 
 def _board_state(tmp_path: Path, check: str, results: list[ModelDelegationCheckResult]):
     rt = _runtime(check)
-    path = tmp_path / rt.gateway_history_relpath
-    append_history(path, results, 100)
+    source = FakeCheckResultSource(
+        records=[r.model_dump(mode="json", exclude={"emitted"}) for r in results]
+    )
     calls: list[list[str]] = []
 
     def run(argv, _timeout):
         calls.append(list(argv))
         return 0, CLOUD_RED + "\n", ""
 
-    reads = refresh_probes(rt, tmp_path, NOW, run, lambda: NOW)
+    reads = refresh_probes(rt, tmp_path, NOW, run, lambda: NOW, check_results=source)
     board = build_board(rt.overlay, {r.source_id: r for r in reads.reads}, NOW)
     assert calls == [], "a scheduled-run probe never reads the cloud job run"
+    assert source.calls == [rt.check_result_topic]
     return board.criteria[0]
 
 
@@ -147,15 +146,48 @@ def test_a_reading_older_than_two_hours_is_unread(
         assert "two hours" in got.reason
 
 
-def test_the_history_line_of_a_gateway_only_check_names_its_leg(tmp_path: Path) -> None:
-    path = tmp_path / "h.jsonl"
-    append_history(
-        path,
-        [
-            _result("C16", EnumCheckVerdict.PASS, 1),
-            _result("C30", EnumCheckVerdict.FAIL, 1),
-        ],
-        10,
+def test_one_scheduled_run_of_ten_passes_shows_ten_of_ten(tmp_path: Path) -> None:
+    """The board fed one scheduled run of ten passes reads every check pass, from one bus read."""
+    checks = [f"C{n}" for n in (11, 12, 13, 14, 15, 16, 17, 28, 29, 30)]
+    doc = copy.deepcopy(OVERLAY)
+    doc["criteria"] = [
+        {
+            "id": c,
+            "condition": "c",
+            "proof": "p",
+            "owner_ticket": "OMN-1",
+            "probes": [f"{c}-probe"],
+        }
+        for c in checks
+    ]
+    doc["probes"] = [
+        {
+            "id": f"{c}-probe",
+            "repository": "Org/cloudrepo",
+            "workflow": "cloud.yml",
+            "max_age_seconds": 7200,
+            "gateway_check": c,
+            "events": ["schedule"],
+        }
+        for c in checks
+    ]
+    doc["ledger_readings"] = []
+    rt = load_runtime(
+        OWN_CONTRACT, environ={}, overlay=ModelBetaBoardOverlay.model_validate(doc)
     )
-    lines = [json.loads(x) for x in path.read_text().splitlines()]
-    assert [x["gateway_leg"] for x in lines] == ["pass", "fail"]
+    source = FakeCheckResultSource(
+        records=[
+            _result(c, EnumCheckVerdict.PASS, 10).model_dump(
+                mode="json", exclude={"emitted"}
+            )
+            for c in checks
+        ]
+    )
+
+    def run(argv, _timeout):
+        raise AssertionError("no cloud read")
+
+    reads = refresh_probes(rt, tmp_path, NOW, run, lambda: NOW, check_results=source)
+    board = build_board(rt.overlay, {r.source_id: r for r in reads.reads}, NOW)
+    assert [c.state for c in board.criteria] == ["pass"] * 10
+    assert source.calls == [rt.check_result_topic]

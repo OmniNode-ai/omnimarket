@@ -65,3 +65,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_delegation_check_probe_effect/test_tick_check_lines.py -q --no-cov -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26723-board-reads-the-bus"
+    description: >-
+      AC1 and AC2 from the bus: the board reads every probe naming a check from the newest scheduled run event on the topic its
+      contract names (one read, no file path, no host), one scheduled run of ten passes reads ten of ten, a reading over two hours old
+      or a topic that cannot be read is unread, and no handler holds the topic as a constant. The tests are new or rewritten on this pull request.
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_beta_board_effect/test_scheduled_run_reading.py tests/nodes/node_beta_board_effect/test_gateway_leg_reading.py tests/nodes/node_beta_board_effect/test_check_result_bus_decode.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"

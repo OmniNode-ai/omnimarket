@@ -10,7 +10,6 @@ beside a red cloud workflow reads green; a red gateway leg reads red.
 from __future__ import annotations
 
 import copy
-import json
 from datetime import timedelta
 from pathlib import Path
 
@@ -35,6 +34,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
 from tests.nodes.node_beta_board_effect.support import (
     NOW,
     OVERLAY,
+    FakeCheckResultSource,
     ago,
     run_list_answer,
 )
@@ -70,35 +70,33 @@ def _runtime() -> ModelBetaBoardRuntime:
 
 def _history(
     home: Path, rt: ModelBetaBoardRuntime, lines: list[dict[str, str]]
-) -> None:
-    path = home / rt.gateway_history_relpath
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(json.dumps(x) for x in lines) + "\n", encoding="utf-8")
+) -> FakeCheckResultSource:
+    return FakeCheckResultSource(records=lines)
 
 
 def _line(
     check: str, leg: str, minutes: int, event: str = "schedule"
 ) -> dict[str, str]:
+    """A run event as the probe publishes it; ``leg`` is the run's verdict word."""
     return {
-        "check": check,
+        "check_id": check,
         "run_id": f"run-{check}-{minutes}",
         "created_at": (NOW - timedelta(minutes=minutes)).isoformat(),
         "event": event,
-        "gateway_leg": leg,
+        "verdict": leg,
     }
 
 
 def _board_state(tmp_path: Path, lines: list[dict[str, str]]) -> tuple[str, list[str]]:
     rt = _runtime()
-    if lines:
-        _history(tmp_path, rt, lines)
+    source = _history(tmp_path, rt, lines)
     cloud_calls: list[list[str]] = []
 
     def run(argv, _timeout):
         cloud_calls.append(list(argv))
         return 0, CLOUD_RED + "\n", ""
 
-    reads = refresh_probes(rt, tmp_path, NOW, run, lambda: NOW)
+    reads = refresh_probes(rt, tmp_path, NOW, run, lambda: NOW, check_results=source)
     board = build_board(rt.overlay, {r.source_id: r for r in reads.reads}, NOW)
     assert cloud_calls == [], "a gateway probe never reads the cloud workflow"
     return board.criteria[0].state, [s.detail for s in board.criteria[0].sources]
@@ -130,11 +128,28 @@ def test_other_checks_lines_and_unmeasured_legs_are_not_readings(
     assert state == "fail"
 
 
-def test_no_history_reads_unread_never_pass(tmp_path: Path) -> None:
+def test_no_record_reads_unread_never_pass(tmp_path: Path) -> None:
     state, details = _board_state(tmp_path, [])
     assert state == "unread"
     assert details
-    assert "history" in details[0]
+
+
+def test_an_unreadable_bus_reads_unread_never_pass(tmp_path: Path) -> None:
+    rt = _runtime()
+    source = FakeCheckResultSource(records=[], error="broker refused")
+    reads = refresh_probes(
+        rt, tmp_path, NOW, lambda *_: (1, "", ""), lambda: NOW, check_results=source
+    )
+    board = build_board(rt.overlay, {r.source_id: r for r in reads.reads}, NOW)
+    assert board.criteria[0].state == "unread"
+    assert "broker refused" in board.criteria[0].sources[0].detail
+
+
+def test_no_bus_source_reads_unread_never_pass(tmp_path: Path) -> None:
+    rt = _runtime()
+    reads = refresh_probes(rt, tmp_path, NOW, lambda *_: (1, "", ""), lambda: NOW)
+    board = build_board(rt.overlay, {r.source_id: r for r in reads.reads}, NOW)
+    assert board.criteria[0].state == "unread"
 
 
 def test_gateway_leg_older_than_two_hours_reads_unread(tmp_path: Path) -> None:
@@ -144,10 +159,21 @@ def test_gateway_leg_older_than_two_hours_reads_unread(tmp_path: Path) -> None:
 
 def test_a_gateway_probe_is_not_listed_as_read_from_the_cloud(tmp_path: Path) -> None:
     rt = _runtime()
-    _history(tmp_path, rt, [_line("C13", "pass", 10)])
-    reads = refresh_probes(rt, tmp_path, NOW, lambda *_: (1, "", ""), lambda: NOW)
+    source = _history(tmp_path, rt, [_line("C13", "pass", 10)])
+    reads = refresh_probes(
+        rt, tmp_path, NOW, lambda *_: (1, "", ""), lambda: NOW, check_results=source
+    )
     board = build_board(rt.overlay, {r.source_id: r for r in reads.reads}, NOW)
     assert board.cloud_probes == ()
+
+
+def test_the_topic_is_a_contract_field_and_the_history_file_is_gone() -> None:
+    rt = _runtime()
+    assert (
+        rt.check_result_topic
+        == "onex.evt.omnimarket.delegation-check-probe-completed.v1"
+    )
+    assert not hasattr(rt, "gateway_history_relpath")
 
 
 def _clause(name: str, ok: bool) -> ModelCheckClause:
