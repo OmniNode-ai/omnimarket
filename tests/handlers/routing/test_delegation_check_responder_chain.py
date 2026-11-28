@@ -168,3 +168,43 @@ def test_a_tier_names_an_address_by_table_not_by_a_literal_comparison() -> None:
     ).names_base
     assert not ModelDelegationCheckResponder(tier="openrouter").names_base
     assert not ModelDelegationCheckResponder(tier="claude_api").names_base
+
+
+def _slot_reader(slots: dict[str, tuple[int, int]]):
+    """Readings carrying (busy, slots): requests in flight and the slot capacity the responder advertises."""
+
+    def read(base: str) -> ModelResponderReading:
+        busy, capacity = slots[base]
+        return reading_from_models_body(
+            base,
+            {"data": [{"id": "m", "max_model_len": 4096}]},
+            busy=busy,
+            slots=capacity,
+        )
+
+    return read
+
+
+def test_a_responder_with_every_slot_processing_is_skipped_for_an_idle_peer() -> None:
+    resolution = resolve_chain(_chain(), _slot_reader({INKLING: (4, 4), QWEN: (1, 4)}))
+    assert resolution.tier == "local"
+    assert resolution.base_url == QWEN
+    by_base = {a.base_url: a.outcome for a in resolution.attempts if a.base_url}
+    assert by_base[INKLING] == "busy"
+    assert by_base[QWEN] == "chosen"
+
+
+def test_every_local_responder_saturated_falls_to_openrouter() -> None:
+    resolution = resolve_chain(_chain(), _slot_reader({INKLING: (2, 2), QWEN: (4, 4)}))
+    assert resolution.tier == "openrouter"
+    assert resolution.base_url is None
+    assert [a.outcome for a in resolution.attempts if a.tier == "local"] == [
+        "busy",
+        "busy",
+    ]
+
+
+def test_a_responder_with_a_free_slot_stays_usable_though_busy() -> None:
+    resolution = resolve_chain(_chain(), _slot_reader({INKLING: (3, 4), QWEN: (1, 4)}))
+    assert resolution.base_url == QWEN
+    assert resolution.tier == "local"

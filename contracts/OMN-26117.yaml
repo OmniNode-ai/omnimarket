@@ -112,3 +112,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_gateway_checks.py tests/nodes/node_delegation_check_probe_effect/test_delegation_check_probe_node.py -q --no-cov -n 0 -p no:randomly -k "submit or responder_timeout"
     cwd: .
+- id: dod-omn26117-pool-saturated-to-openrouter
+  description: The delegation responder chain treats a local responder whose every advertised slot is processing as busy and not usable. Of two local endpoints the one with a free slot carries the task, and when every local endpoint is saturated or down the chain advances to OpenRouter. The slot count comes from the llama.cpp /slots reading the chain already takes, no new probe. The tests fail on the merge base (the reading has no slots field) and pass with the change.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/routing/test_delegation_check_responder_chain.py -q --no-cov -n 0 -p no:randomly -k "saturated or every_slot or free_slot or no_usable_local"
+    cwd: .
