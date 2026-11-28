@@ -1,0 +1,111 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26213"
+title: "The landing controller lands a shared-red cause PR first, with one refresh per base head and a MSG when its head stays DIRTY 30 minutes"
+summary: "The landing decision flags a shared-red cause PR and decides it before every other PR of its repository, refreshes a red head once per base head when a required red reads green on the base (reds the base also fails are set aside), and raises one operator MSG per head when a cause PR's head reads DIRTY for more than 30 minutes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26213-ac1"
+    statement: |-
+      a PR flagged as a shared-red cause is decided before every other PR in its repository on the same tick
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a PR flagged as a shared-red cause is decided before every other PR in its repository on the same tick -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -k shared_red_first (omnimarket) exits non-zero
+  - id: "req-omn26213-ac2"
+    statement: |-
+      a PR whose reds are {scan, DHC} with base green on scan gets UPDATE_BRANCH once per base head, and none a second time on the same base head
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: a PR whose reds are {scan, DHC} with base green on scan gets UPDATE_BRANCH once per base head, and none a second time on the same base head -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -k update_once_per_base_head (omnimarket) exits non-zero
+  - id: "req-omn26213-ac3"
+    statement: |-
+      a cause PR whose head reads DIRTY for more than 30 minutes raises exactly one MSG per head
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a cause PR whose head reads DIRTY for more than 30 minutes raises exactly one MSG per head -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -k dirty_30min_msg (omnimarket) exits non-zero
+  - id: "req-omn26213-ac4"
+    statement: |-
+      a regression test built from the recorded data (6486 DIRTY five times, decisions.jsonl rows, fixture path in the pull request) fails on the broken code and passes on the fix
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: a regression test built from the recorded data (6486 DIRTY five times, decisions.jsonl rows, fixture path in the pull request) fails on the broken code and passes on the fix -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -k shared_red_6486 (omnimarket)
+  - id: "req-omn26213-ac5"
+    statement: |-
+      measurement read 2026-11-21: decisions.jsonl shows update_branch for 6265, 6291, 6346 and 6357, and omnimarket merges per hour are at or above the 11:10Z rate
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: measurement read 2026-11-21: decisions.jsonl shows update_branch for 6265, 6291, 6346 and 6357, and omnimarket merges per hour are at or above the 11:10Z rate -- falsifier: grep -c update_branch ~/.local/state/omni/landing/decisions.jsonl shows no row for any of the four PRs, or the hourly merge count is below the 11:10Z rate
+evidence_requirements:
+  - kind: "tests"
+    description: "The focused decision tests fail on the unfixed handler and pass on the fix."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_shared_red_cause_pr.py -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26213-ac1"
+    description: "The shared_red_first tests of the landing decision node pass; they fail on the merge base, whose handler has no cause-PR flag, no base-identical red set-aside and no DIRTY MSG."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -k shared_red_first -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26213-ac2"
+    description: "The update_once_per_base_head tests of the landing decision node pass; they fail on the merge base, whose handler has no cause-PR flag, no base-identical red set-aside and no DIRTY MSG."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -k update_once_per_base_head -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26213-ac3"
+    description: "The dirty_30min_msg tests of the landing decision node pass; they fail on the merge base, whose handler has no cause-PR flag, no base-identical red set-aside and no DIRTY MSG."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -k dirty_30min_msg -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26213-ac4"
+    description: "The shared_red_6486 tests of the landing decision node pass; they fail on the merge base, whose handler has no cause-PR flag, no base-identical red set-aside and no DIRTY MSG."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -k shared_red_6486 -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26213-ac5-measurement"
+    description: "Read on 2026-11-21 by the morning pass on the launching host: the controller decision log holds an update_branch row for each of the four pull requests. The merges-per-hour comparison with the 11:10Z rate is read by the same pass."
+    source: "manual"
+    binds_ac: ["AC5"]
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          for n in 6265 6291 6346 6357; do grep -E "update_branch" "$HOME/.local/state/omni/landing/decisions.jsonl" | grep -c "omnimarket#$n" | grep -qv '^0$' || exit 1; done
+        cwd: "."
+  - id: "dod-omn26213-integration-proof"
+    description: >-
+      Run the focused decision tests and the decision node's whole test directory on a lab host at the pushed
+      revision. This local completion proof carries no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26213 --kind test --
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          tests/unit/nodes/node_pr_landing_decision_compute
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."
