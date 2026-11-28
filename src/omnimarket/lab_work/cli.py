@@ -81,7 +81,7 @@ _bus_options = [
         default="kafka",
         show_default=True,
     ),
-    click.option("--bus-lane", default=None, help="The declared bus lane to use."),
+    click.option("--bus-lane", envvar="ONEX_LAB_WORK_BUS_LANE", help="The bus lane."),
     click.option(
         "--kafka-bootstrap", default=None, help="The broker, stated directly."
     ),

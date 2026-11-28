@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from collections.abc import Collection
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
@@ -49,9 +50,10 @@ class ProtocolCloserTicketReader(Protocol):
 class ProtocolCloserMergeReader(Protocol):
     """One ticket's merge on the product default branches."""
 
-    def merge(self, ticket_id: str) -> tuple[str, str] | None:
-        """The (clone path, merge commit sha) of the newest squash merge naming the ticket
-        on a repository's default branch; None when there is none."""
+    def merge_many(self, ticket_ids: Collection[str]) -> dict[str, tuple[str, str]]:
+        """The (clone path, merge commit sha) of the newest squash merge naming each
+        ticket on a repository's default branch, read once for the whole set; an id with
+        no merge is absent."""
         ...
 
 
@@ -69,17 +71,38 @@ def _suffix(ticket_id: str) -> int:
 
 
 class GitCloneMergeReader:
-    """The newest squash merge naming the ticket on each listed repository's ``origin``
+    """The newest squash merge naming each ticket on each listed repository's ``origin``
     default branch.
 
-    A repository that cannot be read — no clone, no ``origin`` branch, a failed log — is
-    skipped: the answer comes from the repositories that were read, and is None when none
-    of them names the ticket.
+    ``merge_many`` reads each clone once per run (OMN-26152): one ``git log`` of the
+    subject and body of the commits since a bounded horizon, an id to merge map built in
+    memory, every id answered from it. The answer is the one the per-ticket
+    ``git log -1 --grep`` gave: the first commit in log order naming the id on a clone,
+    and the newest committer time across clones. A repository that cannot be read — no
+    clone, no ``origin`` branch, a failed log — is skipped, and so is every repository
+    past ``max_git_processes`` for the run: the answer comes from the repositories that
+    were read, and an id no read repository names is absent.
     """
 
-    def __init__(self, home: Path, overlay: ModelCloseoutScopeOverlay) -> None:
+    # An id as the per-ticket grep matched it: not glued to a digit on either side.
+    _ID = re.compile(r"(?<![0-9])(OMN-[0-9]+)(?![0-9])")
+    _RECORD = "\x1e"
+    _FIELD = "\x1f"
+
+    def __init__(
+        self,
+        home: Path,
+        overlay: ModelCloseoutScopeOverlay,
+        *,
+        horizon_days: int | None = 400,
+        max_git_processes: int = 16,
+    ) -> None:
+        if max_git_processes <= 0:
+            raise ValueError("max_git_processes must be positive")
         self._home = home
         self._overlay = overlay
+        self._horizon_days = horizon_days
+        self._max_git_processes = max_git_processes
 
     @staticmethod
     def _git(clone: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -91,34 +114,50 @@ class GitCloneMergeReader:
             env=scrub_git_location_env(os.environ),
         )
 
-    def merge(self, ticket_id: str) -> tuple[str, str] | None:
-        grep = f"(^|[^0-9]){re.escape(ticket_id)}([^0-9]|$)"
-        newest: tuple[int, str, Path] | None = None  # (committer time, sha, clone)
+    def _index(self, clone: Path, ref: str) -> dict[str, tuple[int, str]] | None:
+        """The first commit naming each id on the clone's ref, in log order; None when
+        the log cannot be read."""
+        args = ["log", ref, f"--format=%H{self._FIELD}%ct{self._FIELD}%B{self._RECORD}"]
+        if self._horizon_days is not None:
+            args.append(f"--since={self._horizon_days}.days.ago")
+        log = self._git(clone, *args)
+        if log.returncode != 0:
+            return None
+        index: dict[str, tuple[int, str]] = {}
+        for record in log.stdout.split(self._RECORD):
+            sha, _, rest = record.strip("\n").partition(self._FIELD)
+            stamp, _, message = rest.partition(self._FIELD)
+            if not sha:
+                continue
+            when = int(stamp) if stamp.isdigit() else -1
+            for ticket_id in self._ID.findall(message):
+                index.setdefault(ticket_id, (when, sha.strip()))
+        return index
+
+    def merge_many(self, ticket_ids: Collection[str]) -> dict[str, tuple[str, str]]:
+        """The (clone path, merge sha) of each id's newest merge; ids with none absent."""
+        wanted = frozenset(ticket_ids)
+        newest: dict[str, tuple[int, str, Path]] = {}
+        spawned = 0
         for repository in self._overlay.pr_repositories:
             clone = clone_path(self._home, repository)
             if not clone.is_dir():
                 continue
-            ref = f"origin/{repository.default_branch}"
-            if self._git(clone, "rev-parse", "-q", "--verify", ref).returncode != 0:
+            if spawned >= self._max_git_processes:
+                break
+            spawned += 1
+            index = self._index(clone, f"origin/{repository.default_branch}")
+            if index is None:
                 continue
-            log = self._git(
-                clone,
-                "log",
-                ref,
-                "-1",
-                "--extended-regexp",
-                "--grep",
-                grep,
-                "--format=%H%x09%ct",
-            )
-            if log.returncode != 0:
-                continue
-            for line in log.stdout.splitlines():
-                sha, _, stamp = line.partition("\t")
-                when = int(stamp) if stamp.isdigit() else -1
-                if newest is None or when > newest[0]:
-                    newest = (when, sha.strip(), clone)
-        return None if newest is None else (str(newest[2]), newest[1])
+            for ticket_id in wanted & index.keys():
+                when, sha = index[ticket_id]
+                held = newest.get(ticket_id)
+                if held is None or when > held[0]:
+                    newest[ticket_id] = (when, sha, clone)
+        return {t: (str(clone), sha) for t, (_, sha, clone) in newest.items()}
+
+    def merge(self, ticket_id: str) -> tuple[str, str] | None:
+        return self.merge_many((ticket_id,)).get(ticket_id)
 
 
 class ContractCandidateSource:
@@ -166,11 +205,9 @@ class ContractCandidateSource:
         ids = sorted(self._contracts.contract_ids(), key=_suffix)
         if not ids:
             return None
-        merges: dict[str, tuple[str, str]] = {}
-        for ticket_id in self._window(ids):
-            found = self._merges.merge(ticket_id)
-            if found is not None:
-                merges[ticket_id] = found
+        window = self._window(ids)
+        found = self._merges.merge_many(window)
+        merges = {t: found[t] for t in window if t in found}
         open_ids = self._open_prs.open_for(frozenset(merges))
         if open_ids is None:
             return None
