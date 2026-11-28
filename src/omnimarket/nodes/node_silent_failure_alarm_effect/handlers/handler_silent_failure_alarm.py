@@ -108,6 +108,8 @@ LIVENESS = "tick-liveness"
 QUIET = "quiet-host"
 RESULTS = "throughput-results"
 HOUR = timedelta(hours=1)
+# Alarms that read the whole lab: every host decides the same one, so one declared host sends it (OMN-24562).
+LAB_WIDE = frozenset({QUIET, RESULTS})
 DRAINER = "drainer-dead"
 JOB_EXIT = "job-exit"
 INSTALL_FAILURE = "install-failure"
@@ -455,7 +457,16 @@ class HandlerSilentFailureAlarm:
         open_notes: list[str] = []
         resolved: list[str] = []
         raised_now: set[str] = set()
+        sends_lab_wide = (
+            options.lab_wide_sender_host is None
+            or options.host_id == options.lab_wide_sender_host
+        )
         for name, alarm, cells, alert, category in raising:
+            if name in LAB_WIDE and not sends_lab_wide:
+                # Another host sends this alarm; this one neither records nor delivers it.
+                if alarm:
+                    verdicts[name] = "not-sender"
+                continue
             current = opened.get(name)
             if not alarm:
                 if current is None:
