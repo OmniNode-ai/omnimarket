@@ -458,14 +458,16 @@ class HandlerWorkLedgerQuery:
 
     def _read_key(self, request: ModelWorkLedgerQueryRequest) -> tuple[object, ...]:
         """What makes two whole-window reads one held read: everything that decides which rows the
-        store returns or which of them are kept, and not the window's bounds, which a hold is cut to."""
+        store returns or which of them are kept, and not the window's bounds, which a hold is cut to.
+        Whether a start was asked is part of the key (a start changes what the store narrows), but
+        its value is not: a poller whose since moves with the clock must still find its hold."""
         narrowed = request.query in {
             EnumWorkLedgerQueryKind.ROWS,
             EnumWorkLedgerQueryKind.RULINGS,
         }
         return (
             request.query if narrowed else None,
-            request.since,
+            request.since is not None,
             bounded_since(request, datetime.min, timedelta(0)) is not None,
             request.lane if narrowed else None,
             tuple(request.kinds) if narrowed else (),

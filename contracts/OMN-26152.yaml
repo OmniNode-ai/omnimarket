@@ -53,11 +53,21 @@ requirements:
     acceptance:
       - id: AC13
         statement: "AC13: the retention gate's contract_schedule parse, about 10.6 percent of the shared dev runtime's CPU samples (a YAML parse on every runtime tick), parses an unchanged contract once through a bounded cache keyed by path and content hash, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_retention_cleanup/test_contract_schedule_cache_omn26152.py -q -n 0 --no-cov -p no:cacheprovider` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-closer-git-once-per-clone
+    statement: The ticket closer reads each repository clone once per run and caps its git processes, instead of running git processes per ticket per clone.
+    acceptance:
+      - id: AC14
+        statement: "AC14: the ticket closer's merge reader, 53 percent of the shared dev runtime's CPU in git children (97 git processes in 40 s), runs one git log per clone for a whole run, answers every id equal to the per-ticket reading, and caps the git processes of a run, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_contract_candidate_source.py -q -n 0 --no-cov -p no:cacheprovider` passes at the unfixed base or fails at the fixed head"
   - id: req-omn26152-work-ledger-incremental-window
     statement: A held work ledger window whose store watermark moved is extended with only the rows projected since it was built, and the answer equals a full rebuild; rows are built without a per-row validation pass.
     acceptance:
-      - id: AC14
-        statement: "AC14: the work ledger query node's window read, which rebuilt and re-parsed every row of the window whenever the store watermark moved (about 30 lanes append continuously), reads only the rows projected since the held read and appends them to the held parse, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
+      - id: AC15
+        statement: "AC15: the work ledger query node's window read, which rebuilt and re-parsed every row of the window whenever the store watermark moved (about 30 lanes append continuously), reads only the rows projected since the held read and appends them to the held parse, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-work-ledger-sliding-since
+    statement: A work ledger window read whose since moves with the clock finds its held window, so the lab alarm's poll no longer reads and parses the whole window on every call.
+    acceptance:
+      - id: AC16
+        statement: "AC16: the work ledger query node's held read, keyed on the value of the request's since so a poller whose since moves with the clock (the lab alarm's newest read) never found its hold and rebuilt the window on every call, is keyed on whether a start was asked, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -q --no-cov -k sliding_since` passes at the unfixed base or fails at the fixed head"
 evidence_requirements:
   - kind: tests
     description: Writer golden chain including the narrow-path regression tests.
@@ -168,19 +178,35 @@ dod_evidence:
       - check_type: test_passes
         check_value: >-
           uv run pytest tests/unit/runtime_guard/test_lab_receipt_waiters_leave_loop_free.py -q --no-cov
-  - id: dod-omn26152-ac14
-    description: "A held window plus appended rows is parsed alone and answers as a full rebuild does; the test file is absent at the merge base so the check fails there (must-fail control)."
+  - id: dod-omn26152-closer-git-once-per-clone
+    description: "The ticket closer's merge reader runs one git log per clone for a whole run, answers every id from an in-memory map equal to the per-ticket reading, and caps the git processes of a run; the new tests are absent at the merge base so the check fails there (must-fail control)."
     source: manual
     binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_contract_candidate_source.py -q -n 0 --no-cov -p no:cacheprovider
+  - id: dod-omn26152-ac15
+    description: "A held window plus appended rows is parsed alone and answers as a full rebuild does; the test file is absent at the merge base so the check fails there (must-fail control)."
+    source: manual
+    binds_ac: [AC15]
     checks:
       - check_type: test_passes
         check_value: >-
           uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -q --no-cov
-  - id: dod-omn26152-ac14-late-rows
+  - id: dod-omn26152-ac15-late-rows
     description: "A row that reaches the store after a newer row (another lane's late append) is merged into the held window in store order, not rebuilt; the test fails at the base where a late row forces a full rebuild (must-fail control)."
     source: manual
-    binds_ac: [AC14]
+    binds_ac: [AC15]
     checks:
       - check_type: test_passes
         check_value: >-
           uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -k late_rows_older -q --no-cov
+  - id: dod-omn26152-ac16-sliding-since
+    description: "A second read with a later since and an unchanged watermark parses no row, a moved watermark parses only the appended row, and the answer equals a fresh handler's; the check fails at the base where the whole window is parsed again (must-fail control)."
+    source: manual
+    binds_ac: [AC16]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -k sliding_since -q --no-cov

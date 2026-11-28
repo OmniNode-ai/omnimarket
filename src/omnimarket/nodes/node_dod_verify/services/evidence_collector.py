@@ -87,7 +87,7 @@ from omnimarket.models.model_local_done_gate_receipt import (
 )
 from omnimarket.models.model_local_done_gate_receipt_store import (
     ProtocolLocalDoneGateReceiptSource,
-    default_receipt_store,
+    default_receipt_source,
     receipt_reads_verified,
 )
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
@@ -737,6 +737,16 @@ _HERMETIC_NODE_ROOT_ENV = "DOD_VERIFY_HERMETIC_NODE_ROOT"
 _PNPM_INVOCATION_RE = re.compile(
     r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)pnpm\s", re.MULTILINE
 )
+
+# OMN-26725: a command check that runs ``onex lab-work`` gets the verifier's bus lane in
+# ``ONEX_LAB_WORK_BUS_LANE``; the lane is the one its SCM reads use (``ONEX_DOD_VERIFY_SCM_BUS_LANE``,
+# default ``dev``).
+_LAB_WORK_INVOCATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?<![\w./-])onex\s+lab-work(?![\w-])"
+)
+LAB_WORK_BUS_LANE_ENV: Final[str] = "ONEX_LAB_WORK_BUS_LANE"
+_VERIFIER_BUS_LANE_ENV: Final[str] = "ONEX_DOD_VERIFY_SCM_BUS_LANE"
+_VERIFIER_DEFAULT_BUS_LANE: Final[str] = "dev"
 
 # OMN-20768: a command check that runs ``gh pr ...`` or ``gh api ...`` gets the
 # local ``gh`` shim first on its PATH (see ``local_gh_reads``).
@@ -3257,7 +3267,7 @@ class EvidenceCollector:
             return None
         source = self._local_done_gate_receipts
         if source is None:
-            source = default_receipt_store()
+            source = default_receipt_source()
             if source is None:
                 return None
             self._local_done_gate_receipts = source
@@ -6680,6 +6690,18 @@ class EvidenceCollector:
             run_env["UV_NO_SYNC"] = "1"
             run_env.pop("PYTHONPATH", None)
             run_env.pop("VIRTUAL_ENV", None)
+
+        # OMN-26725: an item that runs ``onex lab-work`` names no broker of its own, and the CLI
+        # refuses a kafka bus with no lane. The verifier hands the item its own bus lane, the one
+        # it already uses for its SCM reads; a lane the caller set stays, and so does a --bus-lane
+        # flag in the command (the flag beats the environment).
+        if _LAB_WORK_INVOCATION_RE.search(cmd_str) is not None:
+            if run_env is None:
+                run_env = dict(os.environ)
+            if not run_env.get(LAB_WORK_BUS_LANE_ENV):
+                run_env[LAB_WORK_BUS_LANE_ENV] = (
+                    os.environ.get(_VERIFIER_BUS_LANE_ENV) or _VERIFIER_DEFAULT_BUS_LANE
+                )
 
         # OMN-20768: a command that reads PR facts through ``gh`` runs against a
         # shim that answers the clone-held shapes locally (see local_gh_reads).

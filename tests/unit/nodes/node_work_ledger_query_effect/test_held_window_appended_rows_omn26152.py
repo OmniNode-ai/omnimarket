@@ -130,3 +130,40 @@ def test_late_rows_older_than_the_held_tail_are_merged_not_rebuilt(
         answers[-1],
         HandlerWorkLedgerQuery(reader=reader, now=lambda: NOW).handle(_ask()),
     )
+
+
+def test_a_sliding_since_finds_the_held_window_and_parses_only_appended_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The lab alarm polls with a since that moves each call; the hold must still be found."""
+    clock = _Clock()
+    reader, node = _setup(clock)
+    first = datetime(2026, 11, 9, 10, 0, 0, tzinfo=UTC)
+    assert node.handle(_ask(since=first)).matched == 12
+    parsed: list[int] = []
+    real = replay.parse_rows
+
+    def counting(incoming):  # type: ignore[no-untyped-def]
+        records: tuple[ModelWorkLedgerRowRecord, ...] = tuple(incoming)
+        parsed.append(len(records))
+        return real(records)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(replay, "parse_rows", counting)
+        # same watermark, later since: served from the hold, nothing parsed
+        later = datetime(2026, 11, 9, 10, 5, 0, tzinfo=UTC)
+        slid = node.handle(_ask(since=later))
+        assert max(parsed, default=0) == 0
+        # a moved watermark and a later since: only the appended row is parsed
+        clock.tick()
+        assert reader.ingest({"row_id": "row-new", "raw_row": _row(40)})
+        moved = node.handle(_ask(since=later + timedelta(minutes=1)))
+        assert max(parsed, default=0) <= 1
+    assert slid.matched == 7
+    assert moved.matched == 7
+    _same(
+        moved,
+        HandlerWorkLedgerQuery(reader=reader, now=lambda: NOW).handle(
+            _ask(since=later + timedelta(minutes=1))
+        ),
+    )
