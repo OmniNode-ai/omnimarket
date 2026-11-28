@@ -1875,6 +1875,129 @@ units:
   # overlay's topic and bus lane, compares each through the node path and prints one line. The runtime refuses an
   # overlay that enables act mode and never constructs a writer: nothing is written to GitHub.
   # A pass polls the topic for the overlay's poll_timeout_s: 50 s, under the 60 s interval, is a hung run.
+  # The orchestrator's fill, integration and review rounds ran only as cron prompts inside one Claude Code session, so
+  # when it stalled no round fired and nothing alarmed. Until each round is a scheduled node run, one agent per round runs
+  # node_session_round_effect: a headless `claude -p` of the round's workflow (placed by the operator under
+  # .onex_state/orchestrator-rounds/workflows of the registry root), one run of a round at a time (a start while the
+  # previous run holds the round's lock exits 75 and runs nothing), writing the round's heartbeat at start and at end.
+  # The prompts and cadences stand in for the session's own until its exact prompts are copied here. The run limit is
+  # past the interval on purpose: the lock, not the limit, keeps two runs of a round apart.
+  round-fill:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.round-fill
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 900
+      run_at_load: false
+      description: every 900 s, never two runs of the round at once
+    registry_project: omnimarket
+    run_timeout_s: 2700
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_session_round_effect
+    entry_file: src/omnimarket/nodes/node_session_round_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_ROUND: round-fill
+      ONEX_ROUND_CLAUDE: "{home}/.local/bin/claude"
+      ONEX_ROUND_TIMEOUT_S: "2640"
+      ONEX_ROUND_CLAUDE_ARGS: "--model opus --permission-mode bypassPermissions"
+      ONEX_ROUND_PROMPT: "You are the orchestrator's fill round, run headless by its launchd agent. Run the workflow script {registry_root}/.onex_state/orchestrator-rounds/workflows/fill-tick.js with the Workflow tool (scriptPath), wait for it to finish, and print its result. If that file is absent, print ROUND round-fill NO-SCRIPT and stop."
+    evidence_file: .local/state/omni/orchestrator-rounds/round-fill.heartbeat.json
+    state_directory: .onex_state/orchestrator-rounds
+  round-integration-pass:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.round-integration-pass
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 3600
+      run_at_load: false
+      description: every 3600 s, never two runs of the round at once
+    registry_project: omnimarket
+    run_timeout_s: 10800
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_session_round_effect
+    entry_file: src/omnimarket/nodes/node_session_round_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_ROUND: round-integration-pass
+      ONEX_ROUND_CLAUDE: "{home}/.local/bin/claude"
+      ONEX_ROUND_TIMEOUT_S: "10740"
+      ONEX_ROUND_CLAUDE_ARGS: "--model opus --permission-mode bypassPermissions"
+      ONEX_ROUND_PROMPT: "You are the orchestrator's hourly integration pass, run headless by its launchd agent. Run the workflow script {registry_root}/.onex_state/orchestrator-rounds/workflows/integ-swarm.js with the Workflow tool (scriptPath), wait for it to finish, and print its result. If that file is absent, print ROUND round-integration-pass NO-SCRIPT and stop."
+    evidence_file: .local/state/omni/orchestrator-rounds/round-integration-pass.heartbeat.json
+    state_directory: .onex_state/orchestrator-rounds
+  round-integration-sweep:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.round-integration-sweep
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 3600
+      run_at_load: false
+      description: every 3600 s, never two runs of the round at once
+    registry_project: omnimarket
+    run_timeout_s: 10800
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_session_round_effect
+    entry_file: src/omnimarket/nodes/node_session_round_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_ROUND: round-integration-sweep
+      ONEX_ROUND_CLAUDE: "{home}/.local/bin/claude"
+      ONEX_ROUND_TIMEOUT_S: "10740"
+      ONEX_ROUND_CLAUDE_ARGS: "--model opus --permission-mode bypassPermissions"
+      ONEX_ROUND_PROMPT: "You are the orchestrator's parallel integration sweep, run headless by its launchd agent. Run the workflow script {registry_root}/.onex_state/orchestrator-rounds/workflows/integ-shards.js with the Workflow tool (scriptPath), wait for it to finish, and print its result. If that file is absent, print ROUND round-integration-sweep NO-SCRIPT and stop."
+    evidence_file: .local/state/omni/orchestrator-rounds/round-integration-sweep.heartbeat.json
+    state_directory: .onex_state/orchestrator-rounds
+  round-review:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.round-review
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 1800
+      run_at_load: false
+      description: every 1800 s, never two runs of the round at once
+    registry_project: omnimarket
+    run_timeout_s: 5400
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_session_round_effect
+    entry_file: src/omnimarket/nodes/node_session_round_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_ROUND: round-review
+      ONEX_ROUND_CLAUDE: "{home}/.local/bin/claude"
+      ONEX_ROUND_TIMEOUT_S: "5340"
+      ONEX_ROUND_CLAUDE_ARGS: "--model opus --permission-mode bypassPermissions"
+      ONEX_ROUND_PROMPT: "You are the orchestrator's review round, run headless by its launchd agent. Run the workflow script {registry_root}/.onex_state/orchestrator-rounds/workflows/review-act.js with the Workflow tool (scriptPath), wait for it to finish, and print its result. If that file is absent, print ROUND round-review NO-SCRIPT and stop."
+    evidence_file: .local/state/omni/orchestrator-rounds/round-review.heartbeat.json
+    state_directory: .onex_state/orchestrator-rounds
   landing-tick-orchestrator:
     platform: launchd
     kind: registry_module_tick

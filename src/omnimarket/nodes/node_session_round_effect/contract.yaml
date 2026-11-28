@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Host-timer effect: no subscription and no onex.nodes entry point. A round's launchd agent,
+# rendered by node_host_installer_registry_units, runs it with `python -m` on the operator host.
+# It starts a local `claude -p` process, so a runtime container must never dispatch it.
+name: node_session_round_effect
+contract_name: node_session_round_effect
+node_name: node_session_round_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs one orchestrator round (fill, integration pass, integration sweep or review) as a headless
+  `claude -p` with the round's prompt, under one exclusive lock per round: a start while the
+  previous run of the same round holds the lock exits 75 and runs nothing. Writes the round's
+  heartbeat file at the start and at the end of each run, and keeps the round's output. A
+  temporary bridge until each round is a scheduled node run.
+
+handler:
+  module: omnimarket.nodes.node_session_round_effect.handlers.handler_session_round
+  class: HandlerSessionRound
+  input_model: omnimarket.nodes.node_session_round_effect.models.model_session_round.ModelSessionRoundRequest
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: false
+  side_effects: [process-spawn, file-write]
+  timeout_ms: 3600000
+
+input_model:
+  name: ModelSessionRoundRequest
+  module: omnimarket.nodes.node_session_round_effect.models.model_session_round
+  description: The round's name, state directory, prompt, claude binary, extra arguments and time limit.
+output_model:
+  name: ModelSessionRoundResult
+  module: omnimarket.nodes.node_session_round_effect.models.model_session_round
+  description: Whether the round ran (finished, timed-out, not-started) or was refused (busy), its exit code and the lock holder.
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: inmemory
+  execution_locus: host-local
