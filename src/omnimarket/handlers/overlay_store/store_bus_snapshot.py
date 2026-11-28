@@ -77,6 +77,10 @@ class BusSnapshotOverlayStore:
             self._newest = await self._listen()
         return self._newest.get(overlay_id)
 
+    async def refresh(self) -> None:
+        """Forget what was read: the next read listens again, so a record committed since is reached."""
+        self._newest = None
+
     async def read_through(
         self, overlay_id: str, revision: str
     ) -> Mapping[str, JsonType] | None:

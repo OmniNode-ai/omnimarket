@@ -53,8 +53,7 @@ async def test_operator_paths_are_written_with_the_version() -> None:
         record(operator_paths=PATHS).model_dump(mode="json")
     )
     assert written
-    sql, args = connection.executed[-1]
-    assert "operator_paths" in sql
+    args = next(args for sql, args in connection.executed if "operator_paths" in sql)
     assert json.loads(args[-1]) == list(PATHS)
 
 
@@ -71,6 +70,7 @@ async def test_operator_paths_are_read_back_and_a_row_without_them_reads_as_none
         "source_ref": stored.source_ref,
         "loaded_by": stored.loaded_by,
         "last_loaded_at": NOW,
+        "revision": 1,
         "operator_paths": held,
     }
     current = await PostgresOverlayStore(_Pool(_Connection(row))).read_current(

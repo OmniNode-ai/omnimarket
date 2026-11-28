@@ -18,7 +18,11 @@ from typing import Any
 
 import pytest
 
-from omnimarket.models.overlay_store import ModelOverlayStoreLoadOverlay
+from omnimarket.models.overlay_store import (
+    EnumOverlayWriteOutcome,
+    ModelOverlayStoreLoadOverlay,
+    ModelOverlayWriteReply,
+)
 from omnimarket.nodes.node_overlay_setting_set_effect import runtime_overlay_setting_set
 from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_set_request import (
     ModelOverlaySettingSetRequest,
@@ -30,6 +34,7 @@ from tests.unit.nodes.node_overlay_setting_set.support import (
     OVERLAY_ID,
     live_record,
 )
+from tests.unit.nodes.node_projection_overlay_store.support import REPLY_TOPIC
 
 pytestmark = pytest.mark.unit
 
@@ -43,6 +48,7 @@ class _Probe:
         self.max_open = 0
         self.opened = 0
         self.published: list[str] = []
+        self.listeners: dict[str, Callable[[Any], Any]] = {}
 
 
 class _Bus:
@@ -73,7 +79,11 @@ class _Bus:
         class _Message:
             value = json.dumps(self._probe.live).encode("utf-8")
 
-        await on_message(_Message())
+        if topic == REPLY_TOPIC:
+            # The reply listener rides the bus the write is published on.
+            self._probe.listeners[topic] = on_message
+        else:
+            await on_message(_Message())
 
         async def stop() -> None:
             return None
@@ -84,6 +94,23 @@ class _Bus:
         self, topic: str, key: bytes | None, value: bytes, headers: Any = None
     ) -> None:
         self._probe.published.append(topic)
+
+        class _Reply:
+            value: bytes
+
+        write = json.loads(value)
+        reply = _Reply()
+        reply.value = (
+            ModelOverlayWriteReply(
+                write_id=write["write_id"],
+                overlay_id=write["overlay_id"],
+                outcome=EnumOverlayWriteOutcome.COMMITTED,
+                revision=1,
+            )
+            .model_dump_json()
+            .encode("utf-8")
+        )
+        await self._probe.listeners[REPLY_TOPIC](reply)
 
 
 def _run(monkeypatch: pytest.MonkeyPatch, probe: _Probe) -> None:
@@ -111,10 +138,13 @@ def test_the_command_never_holds_two_lane_buses_at_once(
     assert probe.max_open == 1
 
 
-def test_the_command_still_reads_then_writes_the_record_and_the_audit_row_positive_control(
+def test_the_command_still_reads_then_writes_the_record_and_waits_for_its_reply_positive_control(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     probe = _Probe(_fresh_live())
     _run(monkeypatch, probe)
-    assert len(probe.published) == 2
+    # The write is the one publish (the audit row is the projection's, from the table); the bus it rides is the second
+    # one opened, after the live read's own bus closed, and the reply listener shares it.
+    assert len(probe.published) == 1
     assert probe.opened == 2
+    assert probe.max_open == 1

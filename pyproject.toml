@@ -476,6 +476,7 @@ node_close_out = "omnimarket.nodes.node_close_out"
 node_closeout_effect = "omnimarket.nodes.node_closeout_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_cloud_session_placement_effect = "omnimarket.nodes.node_cloud_session_placement_effect"
+node_cloud_smoke_check_effect = "omnimarket.nodes.node_cloud_smoke_check_effect"
 node_code_contract_score_effect = "omnimarket.nodes.node_code_contract_score_effect"
 node_code_edit_scope_compute = "omnimarket.nodes.node_code_edit_scope_compute"
 node_code_embedding_effect = "omnimarket.nodes.node_code_embedding_effect"
@@ -566,7 +567,9 @@ node_coverage_sweep = "omnimarket.nodes.node_coverage_sweep"
 node_create_followup_tickets_effect = "omnimarket.nodes.node_create_followup_tickets_effect"
 node_create_ticket = "omnimarket.nodes.node_create_ticket"
 node_cross_cli_originator = "omnimarket.nodes.node_cross_cli_originator"
+node_cross_owner_ask_check_compute = "omnimarket.nodes.node_cross_owner_ask_check_compute"
 node_cross_repo_order_gate_compute = "omnimarket.nodes.node_cross_repo_order_gate_compute"
+node_customer_path_container_test_effect = "omnimarket.nodes.node_customer_path_container_test_effect"
 node_daily_line_compute = "omnimarket.nodes.node_daily_line_compute"
 node_daily_line_effect = "omnimarket.nodes.node_daily_line_effect"
 node_dashboard_sweep = "omnimarket.nodes.node_dashboard_sweep"
@@ -1051,6 +1054,7 @@ node_llm_delegation_projection = "omnimarket.nodes.node_llm_delegation_projectio
 node_llm_delegation_routing_compute = "omnimarket.nodes.node_llm_delegation_routing_compute"
 node_llm_eval_harness = "omnimarket.nodes.node_llm_eval_harness"
 node_local_dashboard_serve_effect = "omnimarket.nodes.node_local_dashboard_serve_effect"
+node_local_done_gate_receipt_store_effect = "omnimarket.nodes.node_local_done_gate_receipt_store_effect"
 node_local_environment_observe_effect = "omnimarket.nodes.node_local_environment_observe_effect"
 node_local_review = "omnimarket.nodes.node_local_review"
 node_local_supervisor = "omnimarket.nodes.node_local_supervisor"
@@ -1791,6 +1795,7 @@ secret = "Manage the provider credentials this machine resolves references to."
 models = "Set up the models delegation can use: Google Gemini, OpenRouter, OpenAI, Reflection AI, Anthropic, GLM (z.ai), or a Local Model: any model server you run, by its endpoint URL."
 seed = "Seed labelled fixture delegations through the real projection."
 scm = "GitHub work through the source-control nodes: one verb, one typed answer."
+settings = "Set, read and list the settings the central store holds."
 ticket = "Create, read, comment on or transition Linear tickets over the event bus."
 ci = "CI operations over the event bus."
 lab-archive = "Archive lab history older than seven days to Drive, then free the local copy."
@@ -1885,7 +1890,8 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # OMN-26286: infra moves to dev-20261120235610-e1c7b1f075d2 (omnibase_infra#6116 merged: the infra and omnimemory dev tags now name one omnibase-core tag, dev-20261120075721-2a9efbda3548).
 # OMN-25103: infra moves to dev-20261121195628-0f7f2b730399, which carries omnibase_infra#6129 (the runtime account's grant on floor_integration_pass); the core pin is unchanged.
 # OMN-26495: infra moves to dev-20261124065450-0ecba67c8fee, which carries omnibase_infra#6201 (the vendored overlay store migration 0002_add_operator_paths.sql); the core pin is unchanged.
-omnibase-infra ={ git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261124065450-0ecba67c8fee" }
+# OMN-26635: infra moves to dev-20261125090037-c2bc2ccf8f10, which carries omnibase_infra#6274 (the runtime account's grants on the four overlay store write tables, so the local topology resolves the overlay_store_revision write binding); the core pin is unchanged.
+omnibase-infra ={ git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261125090037-c2bc2ccf8f10" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.

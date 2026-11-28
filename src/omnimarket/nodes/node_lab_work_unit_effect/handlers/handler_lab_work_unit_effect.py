@@ -15,7 +15,9 @@ a typed ``refused`` receipt:
 * a repository owner outside ``allowed_owners``;
 * an executable outside ``allowed_executables`` (the first argv word, by base
   name). The default set covers tests, builds, lint and lab-model code drafts
-  (crush, claude). There is no Codex (operator ruling 2026-09-29). It holds
+  (crush, claude). A leading ``env NAME=value ...`` is parsed into the unit's
+  environment and the first word after it is the one checked; ``env`` itself is
+  never allowed to run anything else. There is no Codex (operator ruling 2026-09-29). It holds
   no shell, but ``python`` and ``uv run`` execute whatever the repository at
   that sha holds, so the allowlist bounds the tool, not the code. The real
   boundary is who can publish to the command topic: the broker, and the owner
@@ -34,6 +36,7 @@ from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit impor
     EnumLabWorkUnitStatus,
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
+    split_env_prefix,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_shell_work_runner import (
     LocalShellLabWorkExecutor,
@@ -106,7 +109,10 @@ class HandlerLabWorkUnitEffect:
     ) -> ModelLabWorkUnitReceipt | None:
         reason = ""
         owner = request.repo.split("/", 1)[0]
-        exe = PurePosixPath(request.argv[0]).name
+        # ``env NAME=value ... <command>`` runs <command> with the assignments in
+        # its environment: the allowlist judges <command>, never ``env`` itself.
+        _, command = split_env_prefix(request.argv)
+        exe = PurePosixPath(command[0]).name if command else ""
         if request.target_host != self._host:
             reason = (
                 f"addressed to {request.target_host!r}, this host is {self._host!r}"
@@ -116,6 +122,8 @@ class HandlerLabWorkUnitEffect:
                 f"repository owner {owner!r} is not one this host runs "
                 f"(allowed: {sorted(self._owners)})"
             )
+        elif not command:
+            reason = "env names no command to run after its assignments"
         elif exe not in self._executables:
             reason = (
                 f"executable {exe!r} is not one this host runs "

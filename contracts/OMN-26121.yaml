@@ -79,7 +79,7 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26121 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_stability_gateway_key_provision_effect tests/unit/nodes/node_secret_store_effect/test_generate_key.py -q --no-cov
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26121 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_stability_gateway_key_provision_effect tests/unit/nodes/node_secret_store_effect/test_generate_key.py -q --no-cov
 - id: dod-omn26121-ac15-lane-model-tenant-id
   description: 'AC15: the tenant_id render test fails at origin/dev (the model forbids the key, extra_forbidden) and passes at the head.'
   source: manual
@@ -104,7 +104,7 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26121 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/models/test_lab_proof_lanes_overlay_document_omn24191.py -q --no-cov
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26121 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/models/test_lab_proof_lanes_overlay_document_omn24191.py -q --no-cov
 - id: dod-omn26121-ac17-build-checks-inputs
   description: 'AC17: the two real failures of the dev container (empty git_sha, git log rc=128) are a typed refusal and a merges-unknown run; the test file does not import at origin/dev (UnresolvableRangeError is absent) and passes at the head.'
   source: manual
@@ -113,4 +113,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_build_delegation_checks/test_unresolvable_build_inputs.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26121-lab-work-bus-lane
+  description: 'The two lab-work run checks of this contract name --bus-lane dev; the test fails at origin/dev (both lack the flag) and passes at the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_omn26121_bus_lane_contract.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .

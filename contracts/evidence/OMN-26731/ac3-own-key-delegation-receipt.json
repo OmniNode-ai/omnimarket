@@ -1,0 +1,75 @@
+{
+  "completed_at": "2026-11-27T23:11:22.774176Z",
+  "correlation_id": "67883f75-f471-4cc0-b5aa-f4b02944a83b",
+  "credential_source": "customer_key",
+  "event_count": 1,
+  "projection_row_hash": "ecc3c50b26d3dc1005ed25058038b26a257746d6b61d858ad53dbcc796fc99a7",
+  "provider": "openrouter",
+  "result_content": "```python\ndef add(a, b):\n    return a + b\n```",
+  "route": "byok-openrouter",
+  "route_provider": "openrouter",
+  "rule_evaluations": [
+    {
+      "detail": null,
+      "enforcement": "blocking",
+      "passed": true,
+      "rule": "compiles_without_errors",
+      "threshold": null,
+      "threshold_unit": null
+    },
+    {
+      "detail": null,
+      "enforcement": "blocking",
+      "passed": true,
+      "rule": "code_artifact_present",
+      "threshold": null,
+      "threshold_unit": null
+    },
+    {
+      "detail": null,
+      "enforcement": "blocking",
+      "passed": true,
+      "rule": "names_resolve",
+      "threshold": null,
+      "threshold_unit": null
+    },
+    {
+      "detail": null,
+      "enforcement": "blocking",
+      "passed": true,
+      "rule": "final_artifact_only",
+      "threshold": null,
+      "threshold_unit": null
+    },
+    {
+      "detail": "UNTESTED: passes_existing_tests: the request named no tests, so the code answer was decided by its contract checks alone and was not run; name tests to have it graded on them",
+      "enforcement": "scored",
+      "passed": false,
+      "rule": "passes_existing_tests",
+      "threshold": null,
+      "threshold_unit": null
+    },
+    {
+      "detail": null,
+      "enforcement": "blocking",
+      "passed": true,
+      "rule": "no_refusal",
+      "threshold": null,
+      "threshold_unit": null
+    }
+  ],
+  "status": "completed",
+  "submitted_at": "2026-11-27T23:11:20.448112Z",
+  "tenant_id": "8044e4eb-0e41-4f94-ad61-ab63064f4198",
+  "terminal_event_hash": "e453dcaffece23a128c19fc654632275261484366511341c527fdbe772c55066",
+  "terminal_failure_class": null,
+  "terminal_failure_code": null,
+  "terminal_failure_reason": null,
+  "terminal_latency_ms": 1964,
+  "terminal_model_used": "qwen/qwen3-coder",
+  "terminal_remediation": null,
+  "terminal_total_tokens": 331,
+  "verifier": "onex-cloud-delegate@7ed3df4ddfee",
+  "workflow_id": "80ca9828-a88e-4915-88e4-1e3b0ff7a1a6",
+  "workflow_type": "delegation-inference"
+}

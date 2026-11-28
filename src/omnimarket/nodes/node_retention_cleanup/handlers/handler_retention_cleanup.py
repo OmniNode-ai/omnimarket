@@ -71,6 +71,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import hashlib
 import logging
 import os
 import threading
@@ -175,11 +176,30 @@ class RetentionSchedule(BaseModel):
 _monotonic = time.monotonic
 
 
+_SCHEDULE_CACHE_MAX = 8
+_schedule_cache: dict[tuple[Path, str], RetentionSchedule] = {}
+
+
 def contract_schedule(contract_path: Path = _CONTRACT_PATH) -> RetentionSchedule:
-    raw = yaml.safe_load(contract_path.read_text()) or {}
-    return RetentionSchedule.model_validate(
+    """Return the contract's schedule, parsing an unchanged file once.
+
+    The runtime tick gates on this every tick; a full YAML parse per tick held about
+    10.6 percent of the shared dev runtime's CPU samples (OMN-26152). The cache key is
+    the path and the sha256 of the text, so an edited file is parsed again.
+    """
+    text = contract_path.read_text()
+    key = (contract_path, hashlib.sha256(text.encode()).hexdigest())
+    cached = _schedule_cache.get(key)
+    if cached is not None:
+        return cached
+    raw = yaml.safe_load(text) or {}
+    schedule = RetentionSchedule.model_validate(
         (raw.get("retention_policy") or {})["schedule"]
     )
+    if len(_schedule_cache) >= _SCHEDULE_CACHE_MAX:
+        _schedule_cache.pop(next(iter(_schedule_cache)))
+    _schedule_cache[key] = schedule
+    return schedule
 
 
 def _load_targets(
