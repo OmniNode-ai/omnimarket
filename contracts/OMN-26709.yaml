@@ -5,12 +5,7 @@ summary: tests/cli/test_agent_message_cli.py::test_a_node_with_no_declared_broke
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
-requirements:
-- id: req-omn26709-overlay-injected
-  statement: The undeclared-broker CLI test supplies its overlay root and broker declaration itself and does not depend on the host overlay environment.
-  acceptance:
-  - id: AC4
-    statement: 'AC4: the test passes with OMNI_HOME and ONEX_WORKSPACE_CONFIG_ROOT set to the host values and with both unset -- falsifier: the test fails in either environment'
+requirements: []
 evidence_requirements:
 - kind: tests
   description: The agent message CLI tests.
@@ -29,3 +24,17 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/cli/test_agent_message_cli.py -q --no-cov -n 0 -p no:randomly -k no_declared_broker
     cwd: .
+- id: dod-omn26709-deleted-criteria-retired
+  description: AC4 is no longer on the ticket; this item carries its typed retirement, and its test checks that the contract retires exactly that one binding.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -q tests/contracts/test_omn26709_deleted_criteria_retired.py --no-cov -n 0 -p no:randomly
+    cwd: .
+  supersedes_ac_binding:
+  - item: dod-omn26709-undeclared-broker-injected-overlay
+    label: AC4
+    reason_kind: no_longer_applicable
+    reason: OMN-26709 carries no AC4 on the ticket now (AC1, AC2 and AC3 remain); the criterion was deleted from the ticket, so this item proves a criterion the ticket no longer has.
+    retired_by: q-close26709x-181500
+    retired_at: '2026-11-28T13:55:00Z'
