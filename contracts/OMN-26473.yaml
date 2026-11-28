@@ -81,7 +81,15 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect/test_provision_postgres.py -q -n 0 --no-cov -k 'test_b_double_run or test_read_answers_by_id'"
+        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect/test_provision_postgres.py -q -n 0 --no-cov -k test_b_double_run"
+        cwd: "."
+  - id: "dod-omn26473-ac1-read-by-id-seam-shape"
+    description: "The tenant read answers by id and by slug against a scratch PostgreSQL 16 holding the seam columns; split from the double-run item so each command fits the per-check time budget the done gate kills at."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect/test_provision_postgres.py -q -n 0 --no-cov -k test_read_answers_by_id"
         cwd: "."
   - id: "dod-omn26473-ac1-outbox-topic"
     description: "The outbox row the provision writes carries the topic onex.tenant.events, read back from a scratch PostgreSQL 16 in the seam shape; the replayed command answers the original payload."
@@ -89,7 +97,15 @@ dod_evidence:
     binds_ac: ["AC1", "AC4"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect/test_provision_postgres.py -q -n 0 --no-cov -k 'test_b_double_run or replay_same_command'"
+        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect/test_provision_postgres.py -q -n 0 --no-cov -k test_b_double_run"
+        cwd: "."
+  - id: "dod-omn26473-ac4-replay-postgres"
+    description: "The replayed command answers the original payload against a scratch PostgreSQL 16 in the seam shape; split from the outbox-topic item so each command fits the per-check time budget the done gate kills at."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect/test_provision_postgres.py -q -n 0 --no-cov -k replay_same_command"
         cwd: "."
   - id: "dod-omn26473-close-lab-ac1-ac2-ac4"
     description: "Close-out reading: the node's tests and the registry consumer tests, run together on a lab host at the pushed head, pass (29 passed on the measured run); covers the provision cases (a) to (e), the envelope parse through the real consumer and the replay determinism."
