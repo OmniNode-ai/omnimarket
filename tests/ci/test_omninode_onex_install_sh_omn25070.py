@@ -14,7 +14,7 @@ uv target without a checksum; a platform mapped to the wrong uv build, or an
 unsupported one accepted; a missing tool reported late or not at all; a uv
 download that is run although its sha256 differs; a launcher another tool owns
 being overwritten; and (opt-in, real network) a clean install, reinstall or
-upgrade that leaves anything but onex and omni-agent on PATH.
+upgrade that leaves anything but onex on PATH.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ TARGETS = (
 BASE_TOOLS = (
     "bash", "curl", "tar", "mktemp", "awk", "sed", "grep", "uname", "basename",
     "cat", "cp", "mv", "mkdir", "rm", "chmod", "dirname", "env", "gzip",
-    "sha256sum", "shasum", "perl", "ldd", "sysctl",
+    "sha256sum", "shasum", "perl", "ldd", "sysctl", "sleep",
 )  # fmt: skip
 
 
@@ -143,6 +143,17 @@ def test_pins_match_the_package_and_every_target_has_a_checksum() -> None:
         match = re.search(rf'{re.escape(target)}\) echo "([0-9a-f]*)"', text)
         assert match, target
         assert len(match.group(1)) == 64, target
+
+
+@pytest.mark.unit
+def test_the_rendered_installer_expects_only_onex() -> None:
+    """The customer install exposes only onex (OMN-25070 ruling 2026-11-25).
+
+    The launcher list the script verifies, and every word it prints, name onex
+    alone: a script that still expects or mentions omni-agent fails here.
+    """
+    assert _script_value("ONEX_LAUNCHERS") == "onex"
+    assert "omni-agent" not in SCRIPT_TEXT
 
 
 @pytest.mark.unit
@@ -357,12 +368,12 @@ def test_install_reinstall_and_upgrade_for_real(tmp_path: Path) -> None:
     first = _run(env, timeout=1800)
     assert first.returncode == 0, first.stderr
     assert "checksum verified" in first.stderr
-    assert {p.name for p in bin_dir.iterdir()} == {"onex", "omni-agent"}
+    assert {p.name for p in bin_dir.iterdir()} == {"onex"}
     assert "is not on your PATH yet" in first.stderr
 
     again = _run(env, timeout=1800)
     assert again.returncode == 0, again.stderr
-    assert {p.name for p in bin_dir.iterdir()} == {"onex", "omni-agent"}
+    assert {p.name for p in bin_dir.iterdir()} == {"onex"}
 
     uv_bin = shutil.which("uv")
     if uv_bin is None:
@@ -399,7 +410,7 @@ def test_install_reinstall_and_upgrade_for_real(tmp_path: Path) -> None:
     upgraded = _run({**env, "ONEX_INSTALL_FIND_LINKS": str(wheels)}, newer_script, 1800)
     assert upgraded.returncode == 0, upgraded.stderr
     assert f"omninode-onex=={newer}" in upgraded.stderr
-    assert {p.name for p in bin_dir.iterdir()} == {"onex", "omni-agent"}
+    assert {p.name for p in bin_dir.iterdir()} == {"onex"}
 
 
 @pytest.mark.unit

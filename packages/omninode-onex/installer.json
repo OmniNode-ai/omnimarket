@@ -1,8 +1,8 @@
 {
   "package": "omninode-onex",
-  "version": "0.0.1.post1",
+  "version": "0.0.1.post2",
   "python": "3.12",
-  "launchers": ["onex", "omni-agent"],
+  "launchers": ["onex"],
   "uv_version": "0.13.8",
   "uv_min_version": "0.8.0",
   "uv_sha256": {
