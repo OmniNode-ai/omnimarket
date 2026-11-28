@@ -157,3 +157,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/settings_store/test_settings_cli.py tests/settings_store/test_bootstrap_seed_idempotent.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn24028-claude-tier-first-record
+  description: 'the first set of a Claude harness tier row on a store with no claude_harness_tiers record creates the document with an empty tiers mapping instead of refusing with SettingParentMissingError; the new test fails on the parent head with that refusal'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set/test_setting_set_first_record.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

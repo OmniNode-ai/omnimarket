@@ -75,7 +75,8 @@ settable_settings:
     key: tiers.{backend}
     path: tiers/{backend}
     document_model: "omnimarket.models.overlay_documents.model_claude_harness_tiers_overlay:ModelClaudeHarnessTiersOverlay"
-    first_document: {schema_version: 1}
+    # The first record names the empty ``tiers`` mapping: a set under tiers.{backend} refuses a document with no mapping at its parent.
+    first_document: {schema_version: 1, tiers: {}}
   # OMN-26043: the delegation responder chain every delegation check sends its task through, one list-valued row (local
   # responders, then openrouter, then claude_api). The row holds no secret: a local responder is a private http://<ipv4>:<port> base.
   - overlay_id: delegation_check_responders
