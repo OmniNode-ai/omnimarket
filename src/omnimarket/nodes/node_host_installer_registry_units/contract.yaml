@@ -2078,6 +2078,38 @@ units:
     environment_file: .config/onex/merged-change-runner-read.env
     evidence_file: .local/state/omni/temporal-worker/last-run.json
     state_directory: .onex_state/temporal-worker
+  # The machine principal grant audit of the dev lane's issuer (OMN-21622), a systemd timer in place of the never-installed hand unit.
+  # The audit script, grants file, issuer container and role come from the node's overlay, never from this unit.
+  principal-grant-audit-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-principal-grant-audit
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 900
+      run_timeout_s: 600
+      run_at_load: false
+      description: every 15 minutes
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_principal_grant_audit_effect
+    entry_file: src/omnimarket/nodes/node_principal_grant_audit_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+    evidence_file: .local/state/omni/principal-grant-audit/last-run.json
+    state_directory: .onex_state/principal-grant-audit
   # The three landing units on a Linux pool host (OMN-23662): the same modules, overlays, probes and environment as the
   # launchd units above, as a systemd user service and timer, so the new landing workflow runs in observe mode on a lab host
   # beside the controller. Each start check runs the unit with its rendered --omni-home and --state-dir plus --probe.
