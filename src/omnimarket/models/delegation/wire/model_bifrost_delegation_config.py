@@ -473,7 +473,9 @@ class ModelQuotaCodeRule(BaseModel):
         default=None,
         description=(
             "How to source the reset instant. 'message_reset_timestamp' reads an "
-            "absolute stamp the provider states inline (z.ai); "
+            "absolute stamp the provider states inline, in UTC; "
+            "'message_reset_timestamp_beijing' reads the same stamp as Beijing time "
+            "(UTC+8, what z.ai writes); "
             "'message_retry_delay' reads a relative 'retry in <N>s' delay "
             "(Gemini, OMN-16932); 'rate_limit_reset_milliseconds' reads "
             "X-RateLimit-Reset from response or error.metadata.headers. "
