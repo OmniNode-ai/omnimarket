@@ -213,3 +213,48 @@ def test_a_paged_rows_poll_with_a_clock_moving_since_and_until_finds_its_hold(
             assert answer.matched == 12  # 12 - n held rows in window + n appended
     # a full read parses the whole window; each poll may parse only its own appended row
     assert max(parsed, default=0) <= 1
+
+
+def test_the_red_main_alarm_lookup_with_a_new_term_each_call_finds_its_hold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The second caller on the dev runtime (node_red_main_alarm_effect ``recorded``): ROWS,
+    kinds STATUS and MSG, ``term=req=<new uuid>`` on every call, ``since`` the 1970 epoch, a page of
+    3 lines. The store does not narrow by a term when a start is given, so the term must not
+    make a new hold key: a new key per call read and parsed every STATUS and MSG row since 1970,
+    and with two held windows evicted the lab alarm's hold as well."""
+    clock = _Clock()
+    reader, _ = _setup(clock)
+    node = HandlerWorkLedgerQuery(reader=reader, now=lambda: NOW)
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+
+    def recorded(n: int) -> ModelWorkLedgerQueryResult:
+        return node.handle(
+            _ask(
+                kinds=["STATUS", "MSG"],
+                term=f"req={uuid4()}-{n}",
+                since=epoch,
+                page_size=3,
+                lines_only=True,
+            )
+        )
+
+    assert recorded(0).matched == 0
+    parsed: list[int] = []
+    real = replay.parse_rows
+
+    def counting(incoming):  # type: ignore[no-untyped-def]
+        records: tuple[ModelWorkLedgerRowRecord, ...] = tuple(incoming)
+        parsed.append(len(records))
+        return real(records)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(replay, "parse_rows", counting)
+        for n in range(1, 4):
+            clock.tick()
+            assert reader.ingest(
+                {"row_id": f"row-red-{n}", "raw_row": _row(40 + n, lane=f"lane-{n}")}
+            )
+            recorded(n)
+    # a read of the window parses all 12 held rows and the new one; an extension parses its own
+    assert max(parsed, default=0) <= 1

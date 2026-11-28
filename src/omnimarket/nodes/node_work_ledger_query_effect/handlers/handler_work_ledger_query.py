@@ -460,18 +460,23 @@ class HandlerWorkLedgerQuery:
         """What makes two whole-window reads one held read: everything that decides which rows the
         store returns or which of them are kept, and not the window's bounds, which a hold is cut to.
         Whether a start was asked is part of the key (a start changes what the store narrows), but
-        its value is not: a poller whose since moves with the clock must still find its hold."""
+        its value is not: a poller whose since moves with the clock must still find its hold.
+        The term is part of the key only when the store narrows by it, which is a read with no start
+        at all (``_narrowing``): a caller that sends a new term on every call, with a start, reads
+        the same rows each time and must find its hold (OMN-26152)."""
         narrowed = request.query in {
             EnumWorkLedgerQueryKind.ROWS,
             EnumWorkLedgerQueryKind.RULINGS,
         }
+        bounded = bounded_since(request, datetime.min, timedelta(0)) is not None
+        started = request.since is not None or bounded
         return (
             request.query if narrowed else None,
             request.since is not None,
-            bounded_since(request, datetime.min, timedelta(0)) is not None,
+            bounded,
             request.lane if narrowed else None,
             tuple(request.kinds) if narrowed else (),
-            request.term if narrowed else None,
+            request.term if narrowed and not started else None,
             request.principal,
         )
 
