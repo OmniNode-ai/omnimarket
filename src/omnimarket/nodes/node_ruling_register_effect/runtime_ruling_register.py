@@ -16,6 +16,7 @@ stderr per failed row; it changes no exit code.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
 import uuid
@@ -26,6 +27,7 @@ from pathlib import Path
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_ruling_register import (
     ModelRulingReadRequest,
+    ModelRulingRegisterPolicy,
     ModelRulingRegisterRequest,
     ModelRulingRegisterResult,
 )
@@ -44,8 +46,12 @@ from omnimarket.nodes.node_ruling_register_effect.adapters import (
 from omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_register_read import (
     HandlerRulingRegisterRead,
     load_topics,
+    resolve_ledger_lock,
 )
-from omnimarket.nodes.node_ruling_register_effect.models import EnumRouteKind
+from omnimarket.nodes.node_ruling_register_effect.models import (
+    EnumRouteKind,
+    ModelRulingRoute,
+)
 from omnimarket.nodes.node_ruling_register_effect.overlay import load_route
 from omnimarket.nodes.node_ruling_register_effect.protocols import (
     ProtocolRulingReadPort,
@@ -59,8 +65,11 @@ def utc_now() -> datetime:
 def read_register(
     environ: Mapping[str, str],
     *,
+    policy: ModelRulingRegisterPolicy | None = None,
+    route: ModelRulingRoute | None = None,
     port: ProtocolRulingReadPort | None = None,
     clock: Callable[[], datetime] = utc_now,
+    now: datetime | None = None,
 ) -> tuple[ModelRulingRegisterResult, tuple[str, ...]]:
     """The register's judgement under ``environ``'s overlays, and its journal write failures.
 
@@ -70,9 +79,19 @@ def read_register(
     the read handler and then the judge, and returns the judged result with the read's
     ``sink_errors``. A missing or invalid overlay raises ``NodeOverlayError``; the caller
     decides the exit code.
+
+    ``now`` is the instant the readings are judged at; unset, it is the clock once the reads have ended. A tick
+    reads for as long as its slowest row (the ledger-reader rows one after another: 720 s at most), so a fast row's
+    reading is that much older than ``now`` by the time it is judged. The age bound guards against a reading older
+    than the tick, so the tick's own span is added to it (only when ``now`` is unset): a reading taken inside the tick is never stale for the
+    tick's length, and a reading older than the bound before the tick began still is.
     """
-    policy = load_ruling_register_policy(environ)
-    route = load_route(environ)
+    # A caller that loaded the policy and the route under its own loader guard (the tick) passes them in, so an overlay
+    # changed after that load is never loaded again here, outside the guard.
+    if policy is None:
+        policy = load_ruling_register_policy(environ)
+    if route is None:
+        route = load_route(environ)
     if port is not None:
         read_port = port
     elif route.kind is EnumRouteKind.INMEMORY:
@@ -80,18 +99,37 @@ def read_register(
         # injects a port that holds the readings.
         read_port = InMemoryRulingReadPort({}, clock=clock)
     else:
-        read_port = CommandRulingReadPort(route, clock=clock)
+        # The host the register runs on reads its own rows locally (LAB_WORK_HOST_NAME, the
+        # name every host unit declares), not over ssh to itself.
+        read_port = CommandRulingReadPort(
+            route,
+            clock=clock,
+            local_host_name=environ.get("LAB_WORK_HOST_NAME", "").strip(),
+        )
     journal = environ.get(route.journal_env, "").strip()
     sink = JournalRulingSink(Path(journal)) if journal else InMemoryRulingSink()
     correlation_id = uuid.uuid4().hex
+    started = clock()
+    ledger_lock = resolve_ledger_lock(environ)
     read = HandlerRulingRegisterRead(
-        read_port, sink, load_topics(), clock=clock
+        read_port, sink, load_topics(), clock=clock, ledger_lock=ledger_lock
     ).handle(ModelRulingReadRequest(correlation_id=correlation_id, policy=policy))
+    ended = clock()
+    # The tick's own span widens the bound only when the tick judges at its own instant; a caller that names ``now``
+    # judges at that instant against the policy's bound as it stands.
+    span_seconds = (
+        max(0, math.ceil((ended - started).total_seconds())) if now is None else 0
+    )
     judged = HandlerRulingRegister().handle(
         ModelRulingRegisterRequest(
             correlation_id=correlation_id,
-            now=clock(),
-            policy=policy,
+            now=ended if now is None else now,
+            policy=policy.model_copy(
+                update={
+                    "max_reading_age_seconds": policy.max_reading_age_seconds
+                    + span_seconds
+                }
+            ),
             readings=read.readings,
         )
     )
