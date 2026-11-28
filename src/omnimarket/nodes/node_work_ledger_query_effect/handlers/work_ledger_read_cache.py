@@ -15,17 +15,27 @@ from __future__ import annotations
 import threading
 import time
 from bisect import bisect_left
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import pairwise
 
+from omnimarket.models.work_ledger_query import ModelWorkLedgerRowRecord
 from omnimarket.nodes.node_work_ledger_query_effect.handlers import (
     work_ledger_query_replay as replay,
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_rows_window_cache import (
     ModelRowsWindowCacheSettings,
 )
+
+
+def sort_key(record: ModelWorkLedgerRowRecord) -> tuple[datetime, datetime, str]:
+    """The store's row order: row_ts, projected_at, row_id."""
+    return (
+        record.row_ts,
+        record.projected_at or datetime.max.replace(tzinfo=record.row_ts.tzinfo),
+        record.row_id,
+    )
 
 
 @dataclass(frozen=True)
@@ -39,6 +49,8 @@ class HeldRead:
     record_ts: tuple[datetime, ...]
     newest_row_ts: datetime | None
     newest_projected_at: datetime | None
+    record_ids: frozenset[str] = frozenset()
+    tail_key: tuple[datetime, datetime, str] | None = None
 
     @classmethod
     def build(
@@ -50,6 +62,7 @@ class HeldRead:
         record_ts: list[datetime],
         newest_row_ts: datetime | None,
         newest_projected_at: datetime | None,
+        records: Sequence[ModelWorkLedgerRowRecord] = (),
     ) -> HeldRead | None:
         """The hold, or None when the rows are not in row_ts order (a cut by time needs it)."""
         parsed_ts = tuple(r.record.row_ts for r in parsed)
@@ -65,6 +78,42 @@ class HeldRead:
             tuple(record_ts),
             newest_row_ts,
             newest_projected_at,
+            frozenset(r.row_id for r in records),
+            sort_key(records[-1]) if records else None,
+        )
+
+    def extend(
+        self,
+        *,
+        until: datetime,
+        records: Sequence[ModelWorkLedgerRowRecord],
+        parsed: list[replay.LedgerRow],
+        newest_row_ts: datetime | None,
+        newest_projected_at: datetime | None,
+    ) -> HeldRead | None:
+        """This hold with rows projected since appended, or None when a full read is needed.
+
+        Rows already held are skipped by id. None when the new rows are not in store order, or
+        the first of them sorts before the held tail: appending would then differ from a rebuild.
+        """
+        if self.tail_key is None:
+            return None
+        new = [r for r in records if r.row_id not in self.record_ids]
+        keys = [sort_key(r) for r in new]
+        if any(b < a for a, b in pairwise(keys)):
+            return None
+        if keys and keys[0] < self.tail_key:
+            return None
+        return HeldRead(
+            self.since,
+            until,
+            self.parsed + tuple(parsed),
+            self.parsed_ts + tuple(r.record.row_ts for r in parsed),
+            self.record_ts + tuple(r.row_ts for r in new),
+            newest_row_ts,
+            newest_projected_at,
+            self.record_ids | {r.row_id for r in new},
+            keys[-1] if keys else self.tail_key,
         )
 
     @property
@@ -86,6 +135,10 @@ class HeldRead:
             return False
         if until < self.until:
             return False
+        return self.since_covers(since)
+
+    def since_covers(self, since: datetime | None) -> bool:
+        """True when the held window starts no later than ``since``."""
         if self.since is None:
             return True
         return since is not None and since >= self.since
@@ -133,4 +186,4 @@ class ReadCache:
                 del self._entries[oldest]
 
 
-__all__ = ["HeldRead", "ReadCache"]
+__all__ = ["HeldRead", "ReadCache", "sort_key"]

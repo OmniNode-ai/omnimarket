@@ -53,6 +53,11 @@ requirements:
     acceptance:
       - id: AC13
         statement: "AC13: the retention gate's contract_schedule parse, about 10.6 percent of the shared dev runtime's CPU samples (a YAML parse on every runtime tick), parses an unchanged contract once through a bounded cache keyed by path and content hash, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_retention_cleanup/test_contract_schedule_cache_omn26152.py -q -n 0 --no-cov -p no:cacheprovider` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-work-ledger-incremental-window
+    statement: A held work ledger window whose store watermark moved is extended with only the rows projected since it was built, and the answer equals a full rebuild; rows are built without a per-row validation pass.
+    acceptance:
+      - id: AC14
+        statement: "AC14: the work ledger query node's window read, which rebuilt and re-parsed every row of the window whenever the store watermark moved (about 30 lanes append continuously), reads only the rows projected since the held read and appends them to the held parse, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
 evidence_requirements:
   - kind: tests
     description: Writer golden chain including the narrow-path regression tests.
@@ -163,3 +168,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: >-
           uv run pytest tests/unit/runtime_guard/test_lab_receipt_waiters_leave_loop_free.py -q --no-cov
+  - id: dod-omn26152-ac14
+    description: "A held window plus appended rows is parsed alone and answers as a full rebuild does; the test file is absent at the merge base so the check fails there (must-fail control)."
+    source: manual
+    binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -q --no-cov

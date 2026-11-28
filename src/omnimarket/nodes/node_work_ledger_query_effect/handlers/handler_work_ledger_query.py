@@ -45,6 +45,7 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_latest_
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     PostgresWorkLedgerQueryReader,
+    ProtocolWorkLedgerAppendedRowReader,
     ProtocolWorkLedgerFilteredRowReader,
     ProtocolWorkLedgerLatestReader,
     ProtocolWorkLedgerOldestRowReader,
@@ -353,30 +354,44 @@ class HandlerWorkLedgerQuery:
         newest_ts, newest_projected = self._reader.freshness(until=until)
         key = self._read_key(request)
         held = self._held_reads.get(key)
+        records: tuple[ModelWorkLedgerRowRecord, ...] | None = None
         if held is not None and held.covers(
             effective_since, until, newest_ts, newest_projected
         ):
             parsed, rows_read = held.cut(effective_since)
             oldest_held = held.oldest_ts
         else:
-            records = self._read_rows(request, until, effective_since)
-            parsed = replay.parse_rows(records)
-            if request.principal is not None:
-                parsed = [
-                    r for r in parsed if r.token("principal") == request.principal
-                ]
-            rows_read = len(records)
-            oldest_held = min((r.row_ts for r in records), default=None)
-            fresh = HeldRead.build(
-                since=effective_since,
-                until=until,
-                parsed=parsed,
-                record_ts=[r.row_ts for r in records],
-                newest_row_ts=newest_ts,
-                newest_projected_at=newest_projected,
+            extended = (
+                self._extend_held(request, held, until, newest_ts, newest_projected)
+                if held is not None
+                and until >= held.until
+                and held.since_covers(effective_since)
+                else None
             )
-            if fresh is not None and records:
-                self._held_reads.put(key, fresh)
+            if extended is not None:
+                self._held_reads.put(key, extended)
+                parsed, rows_read = extended.cut(effective_since)
+                oldest_held = extended.oldest_ts
+            else:
+                records = self._read_rows(request, until, effective_since)
+                parsed = replay.parse_rows(records)
+                if request.principal is not None:
+                    parsed = [
+                        r for r in parsed if r.token("principal") == request.principal
+                    ]
+                rows_read = len(records)
+                oldest_held = min((r.row_ts for r in records), default=None)
+                fresh = HeldRead.build(
+                    since=effective_since,
+                    until=until,
+                    parsed=parsed,
+                    record_ts=[r.row_ts for r in records],
+                    newest_row_ts=newest_ts,
+                    newest_projected_at=newest_projected,
+                    records=records,
+                )
+                if fresh is not None and records:
+                    self._held_reads.put(key, fresh)
         first = effective_since
         if first is None:
             oldest = self._reader
@@ -400,6 +415,46 @@ class HandlerWorkLedgerQuery:
                 status=EnumWorkLedgerParityStatus.UNMEASURED, days=parity.days
             )
         return _WindowRead(parsed, rows_read, newest_ts, newest_projected, parity)
+
+    def _extend_held(
+        self,
+        request: ModelWorkLedgerQueryRequest,
+        held: HeldRead,
+        until: datetime,
+        newest_ts: datetime | None,
+        newest_projected: datetime | None,
+    ) -> HeldRead | None:
+        """The held read plus the rows projected since it was built, or None for a full read.
+
+        About 30 lanes append continuously, so the watermark moves between nearly every two
+        queries; reading and parsing the whole window each time held the runtime's GIL (OMN-26152).
+        """
+        reader = self._reader
+        if held.newest_projected_at is None or not isinstance(
+            reader, ProtocolWorkLedgerAppendedRowReader
+        ):
+            return None
+        kinds, contains, term = self._narrowing(request, held.since)
+        records = reader.read_rows_projected_since(
+            after=held.newest_projected_at,
+            since=held.since,
+            until=until,
+            kinds=kinds,
+            contains=contains,
+            term=term,
+        )
+        parsed = replay.parse_rows(
+            r for r in records if r.row_id not in held.record_ids
+        )
+        if request.principal is not None:
+            parsed = [r for r in parsed if r.token("principal") == request.principal]
+        return held.extend(
+            until=until,
+            records=records,
+            parsed=parsed,
+            newest_row_ts=newest_ts,
+            newest_projected_at=newest_projected,
+        )
 
     def _read_key(self, request: ModelWorkLedgerQueryRequest) -> tuple[object, ...]:
         """What makes two whole-window reads one held read: everything that decides which rows the
@@ -435,24 +490,37 @@ class HandlerWorkLedgerQuery:
         answer is the same.
         """
         reader = self._reader
-        no_start = self._narrowed_without_start(request)
-        if (
-            (since is not None or no_start)
-            and request.query
-            in {EnumWorkLedgerQueryKind.ROWS, EnumWorkLedgerQueryKind.RULINGS}
-            and isinstance(reader, ProtocolWorkLedgerFilteredRowReader)
+        kinds, contains, term = self._narrowing(request, since)
+        if (kinds or contains or term) and isinstance(
+            reader, ProtocolWorkLedgerFilteredRowReader
         ):
+            return reader.read_rows_matching(
+                since=since,
+                until=until,
+                kinds=kinds,
+                contains=contains,
+                **({"term": term} if term else {}),
+            )
+        return reader.read_rows(since=since, until=until)
+
+    def _narrowing(
+        self, request: ModelWorkLedgerQueryRequest, since: datetime | None
+    ) -> tuple[tuple[str, ...], str | None, str | None]:
+        """What the store narrows a window read by: row types, lane text and term, or nothing."""
+        no_start = self._narrowed_without_start(request)
+        if (since is not None or no_start) and request.query in {
+            EnumWorkLedgerQueryKind.ROWS,
+            EnumWorkLedgerQueryKind.RULINGS,
+        }:
             kinds = self._narrow_kinds(request)
             term = request.term if no_start and request.term else None
             if kinds or request.lane or term:
-                return reader.read_rows_matching(
-                    since=since,
-                    until=until,
-                    kinds=tuple(k.upper() for k in kinds),
-                    contains=request.lane or None,
-                    **({"term": term} if term else {}),
+                return (
+                    tuple(k.upper() for k in kinds),
+                    request.lane or None,
+                    term,
                 )
-        return reader.read_rows(since=since, until=until)
+        return (), None, None
 
     @staticmethod
     def _narrow_kinds(request: ModelWorkLedgerQueryRequest) -> tuple[str, ...]:
