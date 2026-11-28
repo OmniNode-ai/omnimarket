@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.330"
+version = "0.4.331"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -2185,9 +2185,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # the pin means replacing those parts too: delete the old ones, then run
 # `split -b 720000 -d <asset> <asset>.part-` in that directory. A test names the
 # pin and the parts that disagree.
-version = "v1.1.16"
-sha256 = "61ff53566dd17948abe3be398d0a995d9414a81f9ca8399b61966e769fc48cef"
-asset = "omnidash-bundle-v1.1.16.tar.gz"
+version = "v1.1.17"
+sha256 = "51cb5486a086a6aa35e968055c171adf80081007018312816f7fc14f8bf76def"
+asset = "omnidash-bundle-v1.1.17.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]

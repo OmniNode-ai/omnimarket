@@ -88,7 +88,15 @@ jobs:
         id: check
         run: |
           set -euo pipefail
-          if git rev-parse "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+          # The LOCAL ref, which a shallow checkout of the merge commit does not
+          # carry: on 2026-11-28 release-cut.yml had already pushed v0.4.330 at
+          # 07:17Z, this read said the tag was absent, the push was rejected
+          # ("already exists"), the job failed and reopen-dev was skipped, so dev
+          # kept the cut's CHANGELOG.md and the OMN-26488 guard test reddened
+          # every open pull request. A tag the cut already pushed is not a failed
+          # release, so read the remote (OMN-18010).
+          if git ls-remote --exit-code --tags origin \
+              "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "Tag ${{ steps.version.outputs.tag }} already exists — skipping"
           else
