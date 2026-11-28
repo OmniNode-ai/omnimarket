@@ -1,0 +1,66 @@
+schema_version: 1.0.0
+ticket_id: OMN-22408
+title: The throughput tick drops a dispatch no-host line once a later run of the same brief, ticket or lane ended in a terminal state
+summary: 'The throughput tick decision node kept a "dispatch:<lane> ended no-host" MISSING line when a later receipt of the same brief, ticket or lane lineage had run and ended blocked or cloud-no-pr, because
+  only running and done counted as a later run. A later receipt that ran and ended blocked, cloud-no-pr, handed-off or partial now supersedes the no-host receipt; a later receipt that never ran (failed,
+  no-host, placing, host-limited) and an earlier receipt still do not.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22408-later-terminal-supersedes
+  statement: A no-host receipt is superseded by a later receipt of its brief, ticket or lane lineage that ran, whatever terminal status it ended with.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a regression test built from the recorded cf-22213-1102c and pinwire-spi-1745 receipts fails on the current read and passes after the fix: a later run of the same brief, ticket or lane
+      with any terminal status supersedes the no-host receipt -- falsifier: uv run pytest tests -q -k dispatch_lost_later_terminal'
+  - id: AC2
+    statement: 'AC2: a no-host receipt with no later run of its lineage still prints the MISSING line -- falsifier: uv run pytest tests -q -k dispatch_lost_still_missing'
+  - id: AC3
+    statement: 'AC3: after install from the branch the next tick prints no dispatch:pinwire-spi-1745 line -- falsifier: uv run pytest tests -q -k dispatch_lost plus the tick log line read after install'
+evidence_requirements:
+- kind: tests
+  description: 'The dispatch lineage tests: the recorded receipts, the terminal statuses, and the controls that still print the line.'
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_throughput_tick_decision_compute -q --no-cov -n 0 -p no:randomly -k dispatch
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22408-ac1-later-terminal
+  description: The recorded receipts of cf-22213-1102c and pinwire-spi-1745 and each terminal status clear the no-host line; they fail on origin/dev.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lost_later_terminal.py -q --no-cov -n 0 -p no:randomly -k dispatch_lost_later_terminal
+    cwd: .
+- id: dod-omn22408-ac2-still-missing
+  description: A no-host receipt with no later run of its lineage, a later receipt that never ran, and an earlier terminal receipt all still print the MISSING line; one case runs a cleared lineage and a lost lineage in the same tick, so the selection fails on origin/dev where the cleared lineage still prints.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lost_later_terminal.py -q --no-cov -n 0 -p no:randomly -k dispatch_lost_still_missing
+    cwd: .
+- id: dod-omn22408-ac3-lineage-suite
+  description: The existing lineage tests still pass beside the new ones; the later-terminal tests run in the same selection and fail on origin/dev.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lineage.py tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lost_later_terminal.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22408-ac3-integration-proof
+  description: Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The pushed head ran the dispatch tests on a lab host through the lab work runner and exited 0. The running
+    reading (the next throughput tick printing no dispatch:pinwire-spi-1745 line, read with its time after install from the branch) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22408 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_throughput_tick_decision_compute -q --no-cov -n 0 -p no:randomly -k dispatch
+    cwd: .

@@ -58,12 +58,12 @@ class ModelLabReceipt(BaseModel):
     )
     ticket: str | None = Field(
         default=None,
-        description="The dispatched ticket; a later running or done receipt of the same ticket supersedes a failed one.",
+        description="The dispatched ticket; a later receipt of the same ticket that ran (running, done, blocked, cloud-no-pr, handed-off or partial) supersedes a failed one.",
     )
     run_id: str | None = None
     brief: str | None = Field(
         default=None,
-        description="The brief path the lane ran; a later receipt of the same brief supersedes a failed one.",
+        description="The brief path the lane ran; a later receipt of the same brief that ran (running, done, blocked, cloud-no-pr, handed-off or partial) supersedes a failed one.",
     )
     reason: str | None = Field(
         default=None,
