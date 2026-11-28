@@ -140,7 +140,7 @@ def _load_user_only(contract_path: Path | None) -> dict[str, str] | None:
         return None
     paths = {
         key: block.get(key)
-        for key in ("realm_role_path_template", "role_mapping_path_template")
+        for key in ("realm_roles_path_template", "role_mapping_path_template")
     }
     if not all(isinstance(value, str) and value for value in paths.values()):
         return None
@@ -419,25 +419,31 @@ class HandlerDevIdentityProvision:
     ) -> ModelDevIdentityProvisionResult:
         """User-only mode: grant the named realm role, then sign in once; no tenant is asked for, read or bound."""
         kc = self._overlay.keycloak
-        role_url = f"{kc.base_url}{paths['realm_role_path_template'].format(realm=kc.realm, role=role)}"
-        found = await self._send(
+        roles_url = (
+            f"{kc.base_url}{paths['realm_roles_path_template'].format(realm=kc.realm)}"
+        )
+        listed = await self._send(
             ModelIdentityHttpRequest(
                 method="GET",
-                url=role_url,
+                url=roles_url,
                 bearer=admin_token,
                 timeout_seconds=kc.timeout_seconds,
             )
         )
-        if (
-            isinstance(found, str)
-            or found.status != 200
-            or not isinstance(found.json_body, dict)
-            or not isinstance(found.json_body.get("id"), str)
-            or found.json_body.get("name") != role
-        ):
+        role_id: str | None = None
+        if not isinstance(listed, str) and listed.status == 200:
+            body = listed.json_body
+            for entry in body if isinstance(body, list) else []:
+                if (
+                    isinstance(entry, dict)
+                    and entry.get("name") == role
+                    and isinstance(entry.get("id"), str)
+                ):
+                    role_id = entry["id"]
+        if role_id is None:
             return self._result(
                 EnumDevIdentityOutcome.ROLE_NOT_FOUND,
-                detail=f"the realm role {role!r} was not readable in the dev realm",
+                detail=f"the realm role {role!r} was not in the dev realm's role list",
                 user_name=user.username,
             )
         mapping_url = f"{kc.base_url}{paths['role_mapping_path_template'].format(realm=kc.realm, user_id=user_id)}"
@@ -446,7 +452,7 @@ class HandlerDevIdentityProvision:
                 method="POST",
                 url=mapping_url,
                 bearer=admin_token,
-                json_body=[{"id": found.json_body["id"], "name": role}],
+                json_body=[{"id": role_id, "name": role}],
                 timeout_seconds=kc.timeout_seconds,
             )
         )

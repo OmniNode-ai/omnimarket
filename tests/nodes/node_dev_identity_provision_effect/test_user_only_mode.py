@@ -143,7 +143,7 @@ def test_read_role_without_user_only_is_refused() -> None:
 
 def test_contract_declares_user_only_paths_and_the_store_declares_the_key() -> None:
     node = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
-    assert "{role}" in node["user_only"]["realm_role_path_template"]
+    assert node["user_only"]["realm_roles_path_template"].endswith("/roles")
     assert "{user_id}" in node["user_only"]["role_mapping_path_template"]
     key = yaml.safe_load(STORE_CONTRACT.read_text(encoding="utf-8"))["generated_keys"][
         KEY_ID

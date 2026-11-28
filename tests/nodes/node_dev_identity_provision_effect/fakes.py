@@ -165,18 +165,15 @@ class FakeKeycloakAndApi:
 
             return self._answer(400)
 
-        # Admin realm role read by name (OMN-25103).
-        if (
-            request.method == "GET"
-            and "/admin/realms/" in request.url
-            and "/roles/" in request.url
-        ):
+        # Admin realm role LIST (OMN-25103): like the dev realm, a single role read by name is refused (403).
+        if request.method == "GET" and request.url.rstrip("/").endswith("/roles"):
             if not self._is_admin(request):
                 return self._answer(403)
-            role = request.url.rstrip("/").rsplit("/", 1)[-1]
-            if role in self.roles:
-                return self._answer(200, {"id": self.roles[role], "name": role})
-            return self._answer(404)
+            return self._answer(
+                200, [{"id": rid, "name": name} for name, rid in self.roles.items()]
+            )
+        if request.method == "GET" and "/roles/" in request.url:
+            return self._answer(403)
 
         # Admin realm role mapping for one user (OMN-25103).
         if request.method == "POST" and request.url.endswith("/role-mappings/realm"):

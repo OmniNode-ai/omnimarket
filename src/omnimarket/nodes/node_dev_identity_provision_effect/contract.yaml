@@ -115,10 +115,10 @@ tenant_binding:
   required_provisioning_state: active
 
 # User-only mode (OMN-25103): a run that carries user_only and read_role creates the one named user, grants it that realm role
-# through these admin paths and asks the runtime for no tenant. The role is read by name first (an unknown role is refused,
+# through these admin paths and asks the runtime for no tenant. The role is looked up by name in the realm's role list first (the dev admin client can list roles but is refused a single role read) (an unknown role is refused,
 # and the user the run created is deleted again).
 user_only:
-  realm_role_path_template: /admin/realms/{realm}/roles/{role}
+  realm_roles_path_template: /admin/realms/{realm}/roles
   role_mapping_path_template: /admin/realms/{realm}/users/{user_id}/role-mappings/realm
 
 overlay:
