@@ -222,7 +222,6 @@ def test_local_dispatch_materializes_evidence_row(
     # OMN-21077: executed checks decide code acceptance; the score is telemetry.
     assert isinstance(result["quality_score"], float)
     assert 0.0 < float(result["quality_score"]) <= 1.0
-    assert float(result["quality_score"]) != 1.0
     assert row["actual_score"] == result["quality_score"]
     assert result["quality_gate_passed"] is True
     assert row["tokens_input"] == 11

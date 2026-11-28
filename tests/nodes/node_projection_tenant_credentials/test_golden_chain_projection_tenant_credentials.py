@@ -30,6 +30,7 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
 )
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
+from tests.helpers.tenant_slug_mirror import mirror_fetchval, slug_uuid
 
 _CONTRACT = (
     Path(__file__).parents[3]
@@ -102,6 +103,7 @@ async def test_registered_then_revoked_round_trip_projects_correctly() -> None:
     Both statements are pinned here, in order.
     """
     db = AsyncMock()
+    db.fetchval = AsyncMock(side_effect=mirror_fetchval)
     db.execute = AsyncMock(
         side_effect=_catalog_rows(
             [
@@ -164,7 +166,7 @@ async def test_registered_then_revoked_round_trip_projects_correctly() -> None:
     # One tenant-scoped sentinel row, on the DECLARED BYOK backend, threading
     # the tenant's OWN ref as secret_ref. Never a platform backend, whose
     # secret_ref is a house credential.
-    assert overlay_args[0] == "omninode"
+    assert overlay_args[0] == slug_uuid("omninode")
     assert overlay_args[1] == BYOK_ALL_TASK_TYPES
     assert overlay_args[2] == backend.backend_id
     assert overlay_args[3] == backend.provider
@@ -204,4 +206,7 @@ async def test_registered_then_revoked_round_trip_projects_correctly() -> None:
     assert "DELETE" not in revoke_overlay_sql.upper()
     # Scoped by tenant AND ref, so revoking one credential cannot blank
     # another tenant's route or a newer ref of this tenant's.
-    assert revoke_calls[1][0][1:] == ("omninode", "cred_omninode_openrouter_golden1")
+    assert revoke_calls[1][0][1:] == (
+        slug_uuid("omninode"),
+        "cred_omninode_openrouter_golden1",
+    )

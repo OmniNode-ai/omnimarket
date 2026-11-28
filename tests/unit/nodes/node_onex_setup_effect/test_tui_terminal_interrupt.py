@@ -97,7 +97,7 @@ def test_ctrl_c_at_guided_setup_keeps_the_tui_usable(tmp_path: Path) -> None:
         _expect(master, b"Guided setup exited with code 1")
         os.write(master, b"\x1b")
         time.sleep(0.25)
-        for key in b"/models connections\r":
+        for key in b"/doctor\r":
             os.write(master, bytes([key]))
             time.sleep(0.02)
         _expect(master, b"terminal still accepts commands")

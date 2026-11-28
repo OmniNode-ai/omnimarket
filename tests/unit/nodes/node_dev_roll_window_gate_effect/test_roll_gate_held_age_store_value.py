@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import json
 from collections.abc import Mapping, Sequence
 from datetime import timedelta
 from importlib import resources
@@ -40,7 +39,6 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.models import (
 )
 from omnimarket.nodes.node_dev_roll_window_gate_effect.overlay import NODE_NAME
 from omnimarket.nodes.node_overlay_setting_set_effect.handlers.handler_overlay_setting_set import (
-    HandlerOverlaySettingSet,
     SettingNotDeclaredError,
     load_settable_settings,
 )
@@ -54,10 +52,9 @@ from tests.unit.nodes.node_dev_roll_window_gate_effect.conftest import (
     Clock,
     command,
 )
-from tests.unit.nodes.node_overlay_setting_set.support import (
-    FakeBus,
-    FakeLive,
-    contract,
+from tests.unit.nodes.node_overlay_setting_set.support import contract
+from tests.unit.nodes.node_projection_overlay_store.support import (
+    Loopback,
 )
 
 pytestmark = pytest.mark.unit
@@ -79,7 +76,7 @@ class StoreAndGate:
     def __init__(self, tmp_path: Path) -> None:
         self.root = tmp_path / "store-root"
         self.clock = Clock()
-        self.bus = FakeBus()
+        self.loop = Loopback()
         record = ModelOverlayStoreRecord(
             overlay_id=NODE_NAME,
             digest=document_digest(dict(STORED_DOC)),
@@ -88,18 +85,8 @@ class StoreAndGate:
             loaded_by="loader",
             loaded_at=NOW - timedelta(minutes=20),
         ).model_dump(mode="json")
-        self.live = FakeLive({NODE_NAME: record})
-        spec = contract()
-        topics = spec["event_bus"]["publish_topics"]
-        self.setter = HandlerOverlaySettingSet(
-            reader=self.live,
-            bus=self.bus,
-            settings=load_settable_settings(spec),
-            loaded_topic=topics[0],
-            audit_topic=topics[1],
-            max_live_age_s=7200.0,
-            clock=lambda: NOW,
-        )
+        self.loop.seed_snapshot(record)
+        self.setter = self.loop.handler(max_live_age_s=7200.0, clock=lambda: NOW)
         self.environ = {"ONEX_SKILL_OVERLAY_ROOTS": str(self.root)}
         self.refresh(STORED_DOC)  # the store holds the document with the key absent
         self.store = InMemoryDevRollGateStore()
@@ -126,9 +113,7 @@ class StoreAndGate:
                 )
             )
         )
-        loaded_topic = contract()["event_bus"]["publish_topics"][0]
-        (_, published) = self.bus.on(loaded_topic)[-1]
-        self.refresh(json.loads(published)["document"])
+        self.refresh(self.loop.delivered[-1]["document"])
 
     def a_tick(self) -> ModelRuntimeTick:
         return ModelRuntimeTick(
@@ -236,14 +221,7 @@ def test_roll_gate_held_age_alarm_setting_is_the_only_gate_key_the_store_declare
     settings = load_settable_settings(contract())
     declared = {s.key for s in settings if s.overlay_id == NODE_NAME}
     assert declared == {KEY}
-    handler = HandlerOverlaySettingSet(
-        reader=FakeLive({}),
-        bus=FakeBus(),
-        settings=settings,
-        loaded_topic="loaded",
-        audit_topic="audit",
-        max_live_age_s=1.0,
-    )
+    handler = Loopback().handler(max_live_age_s=1.0)
     with pytest.raises(SettingNotDeclaredError):
         asyncio.run(
             handler.handle(

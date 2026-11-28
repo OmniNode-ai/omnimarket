@@ -19,6 +19,11 @@ requirements:
     statement: 'DoD1: .github/workflows/call-repo-evidence-gate.yml and tests/ci/receipt_gate_pin.py pin
       receipt-gate.yml at dev-20261122081426-c5dc44467b01 or a later dev-merge tag -- falsifier: uv run pytest
       tests/ci/test_receipt_gate_pin_changelog_free_release_omn25958.py -q fails at the merge base, which pins dev-20261120161913-d3ba14c48d02.'
+- id: req-omn25958-changelog-free-cut
+  statement: The ticket-contract prerequisite admits a release cut that adds no CHANGELOG.md.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: omnimarket''s release-cut gate accepts a release that adds no CHANGELOG.md, and after the next release dev never carries the file -- falsifier: a release-cut gate test that fails on omnimarket dev today, where a cut without CHANGELOG.md is refused'
 evidence_requirements:
 - kind: tests
   description: The removed-prose test passes at the pushed head.
@@ -46,4 +51,28 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_receipt_gate_pin_changelog_free_release_omn25958.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25958-ac3-changelog-free-cut
+  description: 'AC3: the ticket-contract prerequisite exempts a cut of pyproject.toml and uv.lock with no CHANGELOG.md; test_changelog_free_release_cut_needs_no_contract and test_version_bump_only_release_cut_needs_no_contract fail at dev 4e7e2a09, where the cut is refused for carrying no contract.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25958-integration-proof
+  description: 'Run the focused release-cut gate test file of this change on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+      --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+      --lane dod-integration-proof-25958 --kind test --
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+      tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py
+      tests/ci/test_repository_prose_removed_omn17427.py
+      -q -n 0 --no-cov --refuse-skips
     cwd: .

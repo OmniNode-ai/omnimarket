@@ -8,6 +8,7 @@ import os
 from collections.abc import Callable, Mapping
 from datetime import datetime
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_tenant_provision_effect.handlers.handler_tenant_provision import (
     utc_now,
 )
@@ -76,6 +77,12 @@ class HandlerTenantRead:
                 request,
                 EnumTenantReadOutcome.FAILED_STORE_UNAVAILABLE,
                 f"identity store unavailable: {exc}",
+            )
+        except NodeOverlayError as exc:
+            return self._answer(
+                request,
+                EnumTenantReadOutcome.FAILED_STORE_UNAVAILABLE,
+                f"identity store unavailable: overlay not loaded: {exc}",
             )
         if row is None:
             return self._answer(

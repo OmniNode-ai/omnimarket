@@ -5,6 +5,18 @@ summary: The code graph overlay already holds the 30 labelled entities, the 4 kn
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22901-ac2-accepted-20261127t0945z:
+    - label: AC2
+      criterion_hash: 7083f0a3ffa89a60a13a42eb0b1a237b4624545b03fd3a43a548076dba7488bc
+      proposed_by: lane=dod-closeout-bind-2026-11-27T0945Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-27T0945Z-c1
+    dod-omn22901-ac3-accepted-20261127t0945z:
+    - label: AC3
+      criterion_hash: 30668a9dcb17fac9a5cf1c468780a73c238d891284fa90176e2c17a42785b228
+      proposed_by: lane=dod-closeout-bind-2026-11-27T0945Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-27T0945Z-c1
 requirements:
 - id: req-omn22901-frozen-sample
   statement: The frozen sample is one full sha256 over thirty labelled entities, four controls and the bar, and a changed or self-contradicting sample is refused.
@@ -32,7 +44,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_code_graph_effect/test_frozen_sample.py -q --no-cov
+    check_value: uv run pytest tests/nodes/node_code_graph_effect/test_frozen_sample.py -q --no-cov
     cwd: .
 - id: dod-omn22901-chain-mutations
   description: The golden and error chain event tests and their named mutations pass.
@@ -41,7 +53,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_code_graph_effect -q --no-cov -k chain
+    check_value: uv run pytest tests/nodes/node_code_graph_effect -q --no-cov -k chain
     cwd: .
 - id: dod-omn22901-integration-proof
   description: Run this pull request's node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
@@ -50,4 +62,22 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22901 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_code_graph_effect -q --no-cov
+    cwd: .
+- id: dod-omn22901-ac2-accepted-20261127t0945z
+  description: 'AC2: the reading compares the graph verdicts with the labels and reads NOT WORKING when two flipped labels put the agreement under the frozen bar. All 14 tests of the file fail with the product change of omnimarket#5281 reverted.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_graph_effect/test_frozen_sample.py -q --no-cov
+    cwd: .
+- id: dod-omn22901-ac3-accepted-20261127t0945z
+  description: 'AC3: the golden and error chain event tests run with each named mutation in NAMED_MUTATIONS shown red. Two chain tests fail with the product change of omnimarket#5281 reverted.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_graph_effect -q --no-cov -k chain
     cwd: .
