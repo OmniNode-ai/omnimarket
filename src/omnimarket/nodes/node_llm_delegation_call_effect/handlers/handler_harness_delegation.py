@@ -26,6 +26,7 @@ from omnimarket.handlers.container.container_overlay_dependencies import (
     process_environment,
     require_dependencies,
 )
+from omnimarket.handlers.lab_agent_local_rung import HandlerLabAgentLocalRung
 from omnimarket.nodes.node_llm_delegation_call_effect.codex_harness_policy import (
     PACKAGE,
 )
@@ -124,6 +125,7 @@ class HandlerHarnessDelegation:
                     agents=site.get("agents", {}),
                     settings=documents,
                     codex=HandlerCodexHarnessAttempt(dependencies=bound),
+                    local_rung=HandlerLabAgentLocalRung(),
                 ),
                 gate=HandlerHarnessAnswerGate(),
                 cost_sink=HandlerHarnessCostPublisher(block["attempt_topic"]),
