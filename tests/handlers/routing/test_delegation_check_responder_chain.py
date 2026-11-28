@@ -168,3 +168,31 @@ def test_a_tier_names_an_address_by_table_not_by_a_literal_comparison() -> None:
     ).names_base
     assert not ModelDelegationCheckResponder(tier="openrouter").names_base
     assert not ModelDelegationCheckResponder(tier="claude_api").names_base
+
+
+def _reading_with_capacity(base: str, body: dict, busy: int, capacity: int):
+    return reading_from_models_body(base, body, busy=busy, capacity=capacity)
+
+
+def test_a_local_responder_with_every_slot_processing_is_busy_and_skipped() -> None:
+    def read(base: str) -> ModelResponderReading:
+        if base == INKLING:
+            return _reading_with_capacity(base, VLLM_BODY, busy=4, capacity=4)
+        return _reading_with_capacity(base, LLAMACPP_BODY, busy=1, capacity=4)
+
+    resolution = resolve_chain(_chain(), read)
+    assert resolution.base_url == QWEN
+    outcomes = {a.base_url: a.outcome for a in resolution.attempts if a.base_url}
+    assert outcomes[INKLING] == "busy"
+
+
+def test_every_local_responder_busy_or_down_falls_to_openrouter() -> None:
+    def read(base: str) -> ModelResponderReading:
+        if base == INKLING:
+            return _reading_with_capacity(base, VLLM_BODY, busy=2, capacity=2)
+        return reading_from_models_body(base, None)
+
+    resolution = resolve_chain(_chain(), read)
+    assert resolution.tier == "openrouter"
+    assert resolution.base_url is None
+    assert [a.outcome for a in resolution.attempts][:2] == ["busy", "no-answer"]

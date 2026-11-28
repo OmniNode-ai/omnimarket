@@ -34,6 +34,7 @@ EnumAttemptOutcome = Literal[
     "no-answer",
     "no-model",
     "no-window",
+    "busy",
 ]
 
 
@@ -49,6 +50,9 @@ class ModelResponderReading(BaseModel):
     n_ctx: int | None = None
     # Requests in flight on the responder, when it reports them; None when it does not.
     busy: int | None = None
+    # Request slots the responder reports (llama.cpp ``/slots``); None when it reports none. A responder whose
+    # ``busy`` has reached ``capacity`` is saturated and the chain skips it.
+    capacity: int | None = None
 
 
 class ModelResponderAttempt(BaseModel):
@@ -90,7 +94,11 @@ def window_of(reading: ModelResponderReading) -> int | None:
 
 
 def reading_from_models_body(
-    base_url: str, body: Mapping[str, object] | None, *, busy: int | None = None
+    base_url: str,
+    body: Mapping[str, object] | None,
+    *,
+    busy: int | None = None,
+    capacity: int | None = None,
 ) -> ModelResponderReading:
     """Build a reading from a parsed ``/v1/models`` body; ``None`` is a responder that did not answer."""
     if body is None:
@@ -98,7 +106,9 @@ def reading_from_models_body(
     data = body.get("data")
     first = data[0] if isinstance(data, list) and data else None
     if not isinstance(first, dict):
-        return ModelResponderReading(base_url=base_url, answered=True, busy=busy)
+        return ModelResponderReading(
+            base_url=base_url, answered=True, busy=busy, capacity=capacity
+        )
     served = first.get("id")
     meta = first.get("meta")
     n_ctx = meta.get("n_ctx") if isinstance(meta, dict) else None
@@ -110,6 +120,7 @@ def reading_from_models_body(
         max_model_len=max_len if isinstance(max_len, int) else None,
         n_ctx=n_ctx if isinstance(n_ctx, int) else None,
         busy=busy,
+        capacity=capacity,
     )
 
 
@@ -123,6 +134,13 @@ def _local_attempt(
     window = window_of(reading)
     if window is None:
         return "no-window", None
+    if (
+        reading.busy is not None
+        and reading.capacity is not None
+        and reading.capacity > 0
+        and reading.busy >= reading.capacity
+    ):
+        return "busy", window
     return "chosen", window
 
 
