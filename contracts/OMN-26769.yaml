@@ -32,11 +32,11 @@ dod_evidence:
   binds_ac:
   - AC1
 - id: dod-omn26769-ac2
-  description: The full work contract check module collects and passes against the current uv.lock.
+  description: Every work contract in the corpus loads against the current uv.lock (the corpus-load test, sized for the 300 s hosted per-check budget). The whole work contract check module is run on a lab host by dod-omn26769-integration-proof.
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/test_work_contract_checks.py -q
+    check_value: uv run pytest tests/nodes/test_work_contract_pins_current.py::test_work_contract_corpus_pins_match_tree -q
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
