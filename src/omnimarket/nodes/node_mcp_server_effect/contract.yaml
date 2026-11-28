@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: mcp_server_effect
+contract_name: node_mcp_server_effect
+node_name: node_mcp_server_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  The one MCP server node (OMN-15920). HandlerMcpToolsList lists tools from the
+  registry: a node is a tool when its contract says mcp.expose true, its
+  registration is ACTIVE and the overlay allow list names the tool (default
+  deny). The code names no tool. A registry that cannot be read, and a
+  duplicate tool name, are named refusals. HandlerMcpRegistryProjectionRows
+  reads the registry projections and refuses by name an infra that carries no
+  tools list. Calls and transport are later
+  slices.
+node_type: effect
+lifecycle: experimental
+input_model:
+  name: ModelMcpToolsListRequest
+  module: omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list
+output_model:
+  name: ModelMcpToolsListResult
+  module: omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list
+
+handler:
+  name: HandlerMcpToolsList
+  module: omnimarket.nodes.node_mcp_server_effect.handlers.handler_mcp_tools_list
+  class: HandlerMcpToolsList
+  input_model: omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list.ModelMcpToolsListRequest
+  output_model: omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list.ModelMcpToolsListResult
+
+dependencies:
+  - name: registry
+    dependency_type: protocol
+    class_name: ProtocolMcpRegistryReader
+    module: omnimarket.nodes.node_mcp_server_effect.ports.protocol_mcp_registry_reader
+    description: Reads every registration row with its contract's mcp block; the node refuses to start without it
+    required: true
+
+# Declared dependency injection (OMN-15920). The runtime builds HandlerMcpToolsList with no
+# argument; the handler takes its `registry` dependency from registry_factory, a callable this
+# contract names, and reads the database address from the environment variable named here.
+config:
+  registry_factory: "omnimarket.nodes.node_mcp_server_effect.handlers.reader_registry_projections:build_registry_reader"
+  projection_dsn_env: "OMNIBASE_INFRA_DB_URL"
+  # Bootstrap overlay: the tools the server lists until a settings store carries the allow list.
+  # `delegate` is the first tool of the one-MCP-server plan; the node that owns it declares it
+  # in its own contract's mcp block. A request that carries an overlay replaces this one.
+  overlay:
+    allowed_tools:
+      - delegate
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_mcp_server_effect.handlers.handler_mcp_tools_list:HandlerMcpToolsList
+  # HandlerMcpRegistryProjectionRows is the registry reader HandlerMcpToolsList is built with, so it
+  # is bound here by operation and no bus topic routes to it. It constructs with no argument (the
+  # boot resolver needs that) and refuses by name when read without a projections source.
+  handlers:
+    - operation: read_registrations
+      handler:
+        name: HandlerMcpRegistryProjectionRows
+        module: omnimarket.nodes.node_mcp_server_effect.handlers.handler_mcp_registry_projection_rows
+
+# The tools/list slice declares no topic; command routes come from each
+# exposed node's own mcp block.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: The MCP transport calls tools/list through this handler; nothing on the bus starts it in this slice.
+  on_demand:
+    command: HandlerMcpToolsList.handle, built with the registry reader and the overlay
+    owner: OmniNode Platform Team
+metadata:
+  transport_type: local
