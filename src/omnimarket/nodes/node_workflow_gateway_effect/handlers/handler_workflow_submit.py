@@ -70,6 +70,19 @@ def _submission_fingerprint(
     return uuid5(NAMESPACE_URL, f"onex-workflow-submission:{canonical}")
 
 
+def _tenant_scoped_correlation_id(tenant_id: UUID, correlation_id: UUID) -> UUID:
+    """The correlation_id the row, the wire and the runtime carry for one tenant's number.
+
+    The runtime keys a job by correlation_id alone, so two tenants sending one number would
+    share a job there: the second is dropped as a repeat and never reaches a final state.
+    Scoping the number by tenant keeps each tenant's job its own; the caller still reads
+    its own number back on the acknowledgement.
+    """
+    return uuid5(
+        NAMESPACE_URL, f"onex-workflow-correlation:{tenant_id}:{correlation_id}"
+    )
+
+
 class HandlerWorkflowSubmit:
     """Submits one workflow: validate, rate-limit, admit, publish, acknowledge."""
 
@@ -219,9 +232,14 @@ class HandlerWorkflowSubmit:
         else:
             envelope_id = self._new_uuid()
         causation_id = submission.causation_id or envelope_id
+        wire_correlation_id = (
+            _tenant_scoped_correlation_id(caller.tenant_id, correlation_id)
+            if submission.correlation_id is not None
+            else correlation_id
+        )
         envelope = ModelWorkflowCommandEnvelope(
             envelope_id=envelope_id,
-            correlation_id=correlation_id,
+            correlation_id=wire_correlation_id,
             causation_id=causation_id,
             source_tenant_id=caller.tenant_id,
             authenticated_user_id=caller.authenticated_user_id,
@@ -263,7 +281,7 @@ class HandlerWorkflowSubmit:
             replay = ModelWorkflowAck(
                 workflow_id=existing.workflow_id,
                 envelope_id=existing.envelope_id,
-                correlation_id=existing.correlation_id,
+                correlation_id=correlation_id,
                 workflow_type=existing.workflow_type,
                 status=existing.status,
                 accepted_at=existing.submitted_at,
@@ -306,7 +324,7 @@ class HandlerWorkflowSubmit:
                 body={
                     "detail": "workflow accepted for validation but could not be published",
                     "workflow_id": str(envelope.workflow_id),
-                    "correlation_id": str(envelope.correlation_id),
+                    "correlation_id": str(correlation_id),
                 },
             )
 
@@ -323,7 +341,7 @@ class HandlerWorkflowSubmit:
         ack = ModelWorkflowAck(
             workflow_id=envelope.workflow_id,
             envelope_id=envelope.envelope_id,
-            correlation_id=envelope.correlation_id,
+            correlation_id=correlation_id,
             workflow_type=envelope.workflow_type,
             status=EnumWorkflowStatus.PUBLISHED,
             accepted_at=envelope.emitted_at,

@@ -98,3 +98,22 @@ async def test_repeats_leave_one_row_the_terminal_writer_can_finish() -> None:
     assert row is not None
     assert row.status == "completed"
     assert len(gateway.store._rows) == 1
+
+
+async def test_two_tenants_with_one_number_publish_distinct_wire_correlation_ids() -> (
+    None
+):
+    """The runtime keys a job by the wire correlation_id alone, so tenant B's same number
+    must not reach it as tenant A's number: it would be dropped as a repeat and stay published."""
+    gateway, corr = build_gateway(), uuid4()
+    async with _client(gateway) as client:
+        a = await _post(client, KEY_A, _body(corr))
+        b = await _post(client, KEY_B, _body(corr))
+        a_again = await _post(client, KEY_A, _body(corr))
+    assert a.status_code == b.status_code == 202
+    assert a.json()["correlation_id"] == b.json()["correlation_id"] == str(corr)
+    assert a_again.json()["workflow_id"] == a.json()["workflow_id"]
+    wire_ids = [wire["correlation_id"] for _, _, wire in gateway.publisher.published]
+    assert len(wire_ids) == 2
+    assert len(set(wire_ids)) == 2
+    assert "tenant" not in b.text.lower() or str(TENANT_A) not in b.text
