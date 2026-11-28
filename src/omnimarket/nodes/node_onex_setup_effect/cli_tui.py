@@ -20,6 +20,7 @@ import signal
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
+from pathlib import Path
 from typing import ClassVar, Literal, Protocol, TypeVar, cast
 from urllib.parse import urlparse
 
@@ -2676,7 +2677,15 @@ class OnexTui(App[int]):
     async def docker_start(self) -> Text:
         """Start the full stack; a failure shows one plain cause, never raw output."""
         words = tui_design().docker
-        code, out, err = await self._runner.capture(tuple(words.start))
+        stack = Path(__file__).parent / "stack"
+        argv = tuple(
+            part.format(
+                compose_file=stack / "compose.yaml",
+                topology_file=stack / "topology.yaml",
+            )
+            for part in words.start
+        )
+        code, out, err = await self._runner.capture(argv)
         glyphs = tui_design().glyphs
         ok = not code
         if ok:

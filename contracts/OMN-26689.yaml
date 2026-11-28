@@ -1,7 +1,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-26689"
 title: "A /docker tab in the onex TUI starts, shows and stops the full self-hosted stack for users who want more features"
-summary: "The onex TUI lists /docker and shows a Docker tab, both read from tui_design.yaml. Start runs the setup command the design names, and a missing or stopped Docker is shown as one plain sentence. This slice binds AC1 and AC2; AC3 to AC6 stay open."
+summary: "The onex TUI lists /docker and shows a Docker tab, both read from tui_design.yaml. Start runs the setup command the design names, and a missing or stopped Docker is shown as one plain sentence. This change binds AC1, AC2, AC3 and AC5; AC4 and AC6 stay open."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -16,6 +16,12 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: with Docker not installed or not running, the tab names the cause and the fix in one plain sentence and no raw error text -- falsifier: pilot test with a fake runner returning docker-not-found and daemon-down
+      - id: "AC3"
+        statement: |-
+          AC3: Start runs `onex setup --path docker` with the shipped compose and topology files and no files typed by the user -- falsifier: pilot test asserts the exact argv the runner received
+      - id: "AC5"
+        statement: |-
+          AC5: every published port in the shipped compose file binds 127.0.0.1 -- falsifier: pytest reads the shipped compose file and checks each ports entry
 evidence_requirements:
   - kind: "tests"
     description: "Pilot tests: the palette and tab bar list /docker at 80x24 and 140x40; a failed Start with docker-not-found or daemon-down output shows one plain sentence and no raw text."
@@ -40,6 +46,22 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_docker.py -q -n 0 --no-cov -k names_the_cause"
+        cwd: "."
+  - id: "dod-omn26689-start-argv-has-shipped-files"
+    description: "Start hands the runner onex setup --path docker with the shipped compose and topology files; the test fails on the base tree, which ships neither."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_docker.py -q -n 0 --no-cov -k shipped_files_and_none_typed"
+        cwd: "."
+  - id: "dod-omn26689-shipped-compose-binds-loopback"
+    description: "Every ports entry of the shipped compose file starts with 127.0.0.1, and the shipped topology validates against the compose services."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_docker.py -q -n 0 --no-cov -k shipped"
         cwd: "."
   - id: "dod-omn26689-integration-proof-bound"
     description: "Run the Docker tab's pilot tests on a lab host at the pushed head, addressed to the declared dev bus lane; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
