@@ -72,24 +72,26 @@ def evict_oldest(
     if refs is None:
         out.errors.append("process references unreadable; the uv cache pass is skipped")
         return
-    candidates: list[tuple[str, bool, ModelUvArchiveEntry]] = []
+    candidates: list[tuple[str, bool, str | None, ModelUvArchiveEntry]] = []
     for bucket in rule.buckets:
         bucket_dir = str(Path(cache.path) / bucket)
+        bound = buckets[bucket]
         try:
             scanned = ports.uv_archive.scan(
-                bucket_dir, buckets[bucket].depth, cache.timeout_seconds
+                bucket_dir, bound.depth, cache.timeout_seconds, bound.marker_suffix
             )
         except OSError as exc:
             out.errors.append(f"{bucket_dir}: {type(exc).__name__}")
             continue
         candidates.extend(
-            (bucket_dir, buckets[bucket].keep_linked, entry) for entry in scanned
+            (bucket_dir, bound.keep_linked, bound.marker_suffix, entry)
+            for entry in scanned
         )
     cutoff = now - rule.keep_days * _DAY
     seen: dict[str, set[str]] = {}
     freed = 0
-    for bucket_dir, keep_linked, entry in sorted(
-        candidates, key=lambda c: (c[2].newest_mtime, c[0], c[2].name)
+    for bucket_dir, keep_linked, marker_suffix, entry in sorted(
+        candidates, key=lambda c: (c[3].newest_mtime, c[0], c[3].name)
     ):
         if freed >= bytes_needed:
             return
@@ -117,7 +119,7 @@ def evict_oldest(
         )
         if not dry_run:
             try:
-                ports.uv_archive.remove(bucket_dir, entry.name)
+                ports.uv_archive.remove(bucket_dir, entry.name, marker_suffix)
             except OSError as exc:
                 out.errors.append(f"{path}: {type(exc).__name__}")
                 continue
