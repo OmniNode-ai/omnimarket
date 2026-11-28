@@ -59,3 +59,17 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26583 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/cli/test_agent_message_cli.py tests/cli/test_agent_message_mcp.py -q -m unit --no-cov
+- id: dod-omn26583-readme-commands
+  description: 'The how-to README for the agent message client gives only commands, tool names, enum values and exit codes the code accepts: its command line examples run against the fake node, its Codex and Gemini registrations name the real serve-mcp command and both tools, and its refusal table matches the refusal exit codes.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_readme.py -q -m unit -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26583-readme-verified-senders
+  description: 'The README states the merged sender behaviour: the read answer keys messages, unverified and rejections, every typed verification reason, the sender_mismatch refusal with exit code 2, the one host that reaches the dev settings store, and that revoke is not merged.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_readme.py -q -m unit -n 0 --no-cov -p no:cacheprovider
+    cwd: .
