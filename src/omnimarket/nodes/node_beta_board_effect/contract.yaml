@@ -43,6 +43,7 @@ descriptor:
   timeout_ms: 90000
   side_effects:
     - runs the registry's onex source-control read (run-list) once per declared probe, one at a time, and keeps the answers in the node's state file
+    - reads the run events of the delegation check probe from the topic the runtime block names, once per build, joining no consumer group and committing nothing
     - reads the ledger rows of each declared ledger reading through the ledger read route the overlay names
     - writes the board's JSON under the registry home
     - writes the page and the JSON to the serving directory of each host the overlay lists, over ssh
@@ -85,9 +86,9 @@ runtime:
   # concurrent input group, whose limit is 90 s). A probe read within probe_refresh_seconds is not read again.
   stage_deadline_seconds: 50
   probe_refresh_seconds: 240
-  # The delegation check probe node's run history (its host unit's state directory): a probe naming a gateway_check reads the
-  # gateway_leg field of that check's scheduled runs here, not a workflow (OMN-26043).
-  gateway_history_relpath: .onex_state/delegation-check-probe/delegation-check-runs.jsonl
+  # The topic the delegation check probe publishes each run on: a probe naming a gateway_check reads that check's newest scheduled
+  # run event (its verdict) here, not a workflow and not a file on any host (OMN-26723).
+  check_result_topic: onex.evt.omnimarket.delegation-check-probe-completed.v1
   # A scheduled run's reading older than two hours is unread on the board, never a stale verdict.
   gateway_reading_max_age_seconds: 7200
   transport:

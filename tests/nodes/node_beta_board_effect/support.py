@@ -15,11 +15,33 @@ from omnimarket.nodes.node_beta_board_effect.handlers.handler_beta_board import 
 from omnimarket.nodes.node_beta_board_effect.models.model_beta_board import (
     ModelBetaBoardOverlay,
     ModelBetaBoardRuntime,
+    ModelCheckResultRead,
+    ModelCheckResultRecord,
     ModelReadingPoint,
     ModelSourceRead,
     ReadingVerdict,
     SourceKind,
 )
+
+
+class FakeCheckResultSource:
+    """The bus read, scripted: the run events a topic holds (dicts as the probe publishes them) or an error."""
+
+    def __init__(self, records: list[dict[str, str]], error: str | None = None) -> None:
+        self.records = records
+        self.error = error
+        self.calls: list[str] = []
+
+    def read(self, topic: str, since: datetime) -> ModelCheckResultRead:
+        self.calls.append(topic)
+        if self.error is not None:
+            return ModelCheckResultRead(error=self.error)
+        return ModelCheckResultRead(
+            records=tuple(
+                ModelCheckResultRecord.model_validate(r) for r in self.records
+            )
+        )
+
 
 NOW = datetime(2026, 11, 9, 12, 0, 0, tzinfo=UTC)
 
