@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - DreamSheets structure record
+#
+# Runs DreamSheets' own headless binary (`mcp-headless --read-only --tools
+# open_document,get_structure_summary`) on ONE document, under bubblewrap, and
+# returns its structure record: tab/table/column counts, capability counts,
+# and -- only when the host opts out of strict privacy -- row/cell totals, a
+# size bucket and the largest table's size. Never names, ids, paths or text.
+#
+# Direct invocation only: no event_bus block, so no shared runtime attaches
+# it. The binary location and its pinned sha256 are the HOST's configuration
+# (ONEX_DREAMSHEETS_APPIMAGE_ROOT, ONEX_DREAMSHEETS_BINARY_SHA256), never a
+# request field: a caller names a document, not a program to run.
+name: "node_dreamsheets_structure_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Summarizes one DreamSheets document's structure with DreamSheets' own
+  headless binary, run under bubblewrap with no network, a read-only hashed
+  copy of the input, a private home and temp, a cleared environment and only
+  the structure tool available. Returns the summary_version 1 record, or a
+  refused/failed result carrying a fixed error code.
+input_model:
+  name: "ModelDreamsheetsStructureRequest"
+  module: "omnimarket.nodes.node_dreamsheets_structure_effect.models.model_dreamsheets_structure"
+  description: "Absolute path of one .dsheet document, optional correlation id."
+output_model:
+  name: "ModelDreamsheetsStructureResult"
+  module: "omnimarket.nodes.node_dreamsheets_structure_effect.models.model_dreamsheets_structure"
+  description: "Status, the structure record, error code, input and binary sha256, DreamSheets release."
+handler:
+  module: "omnimarket.nodes.node_dreamsheets_structure_effect.handlers.handler_dreamsheets_structure_effect"
+  class: "HandlerDreamsheetsStructureEffect"
+  input_model: "omnimarket.nodes.node_dreamsheets_structure_effect.models.model_dreamsheets_structure.ModelDreamsheetsStructureRequest"
+  output_model: "omnimarket.nodes.node_dreamsheets_structure_effect.models.model_dreamsheets_structure.ModelDreamsheetsStructureResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_dreamsheets_structure_effect.handlers.handler_dreamsheets_structure_effect:HandlerDreamsheetsStructureEffect"
+  handlers:
+    - operation: "summarize_structure"
+      handler:
+        name: "HandlerDreamsheetsStructureEffect"
+        module: "omnimarket.nodes.node_dreamsheets_structure_effect.handlers.handler_dreamsheets_structure_effect"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation with a typed request."
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 90000
+metadata:
+  transport_type: local
+  description: "DreamSheets structure record from the sandboxed headless binary"
+  author: "DreamSheets"
+  created: "2026-11-27"
+  tags:
+    - "effect"
+    - "dreamsheets"
+    - "structure-summary"
+    - "sandbox"
+  related_tickets: []
