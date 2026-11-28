@@ -24,6 +24,9 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_earlier_model_attempt import (
     ModelEarlierModelAttempt,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_provider_key_attempt import (
+    ModelProviderKeyAttempt,
+)
 
 
 class ModelLlmDelegationCallResult(BaseModel):
@@ -195,3 +198,9 @@ class ModelLlmDelegationCallResult(BaseModel):
     # before resolution was reached — never a claim that the store answered.
     secret_source: EnumSecretSource | None = None
     secret_ref: str | None = None
+
+    # OMN-19432: the house keys tried for this call, in order, by NAME with the
+    # class each was refused with. ``secret_ref`` above names the key that
+    # answered (or the last one tried, on a failure). Empty when the call ran on
+    # one reference only: a customer's own key, or a backend with one declared key.
+    key_failover_attempts: tuple[ModelProviderKeyAttempt, ...] = ()
