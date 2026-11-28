@@ -10,6 +10,7 @@ skipped, which the gate refuses.
 
 from __future__ import annotations
 
+import os
 import socket
 from pathlib import Path
 from typing import Protocol
@@ -73,6 +74,46 @@ def default_receipt_store() -> FilesystemLocalDoneGateReceiptStore | None:
     return FilesystemLocalDoneGateReceiptStore(Path(home) / "local_done_gate_receipts")
 
 
+class ChainedLocalDoneGateReceiptSource:
+    """Receipts read from several stores in order, earlier stores first."""
+
+    def __init__(self, sources: list[FilesystemLocalDoneGateReceiptStore]) -> None:
+        self._sources = sources
+
+    def receipts_for(self, ticket_id: str) -> list[ModelLocalDoneGateReceipt]:
+        return [r for source in self._sources for r in source.receipts_for(ticket_id)]
+
+
+def default_receipt_source() -> ChainedLocalDoneGateReceiptSource | None:
+    """Every store the declared state roots name, or None when none is declared.
+
+    The receipt consumer writes under the runtime's state root. A verifier the
+    Done-write guard starts as ``skill dod_verify --state-root <temp dir>`` has
+    ``ONEX_STATE_DIR`` pointed at that temp dir, while ``ONEX_STATE_ROOT`` keeps
+    the runtime's own root. Reading only the first declared root reads an empty
+    store, so each distinct declared root is read.
+    """
+    from omnimarket.config.state_root import ONEX_STATE_ROOT_ENV_KEYS
+    from omnimarket.handlers.runtime_paths import runtime_path
+
+    subdir = runtime_path("dod_evidence.home_subdir")
+    roots: list[Path] = []
+    for key in ONEX_STATE_ROOT_ENV_KEYS:
+        value = os.environ.get(key, "").strip()
+        if value and Path(value) not in roots:
+            roots.append(Path(value))
+    if not roots:
+        return None
+    return ChainedLocalDoneGateReceiptSource(
+        [
+            FilesystemLocalDoneGateReceiptStore(
+                root / subdir / "local_done_gate_receipts"
+            )
+            for root in roots
+        ]
+    )
+
+
 def receipt_from_results(
     *,
     ticket_id: str,
@@ -132,8 +173,10 @@ def receipt_reads_verified(
 
 
 __all__ = [
+    "ChainedLocalDoneGateReceiptSource",
     "FilesystemLocalDoneGateReceiptStore",
     "ProtocolLocalDoneGateReceiptSource",
+    "default_receipt_source",
     "default_receipt_store",
     "receipt_from_results",
     "receipt_reads_verified",
