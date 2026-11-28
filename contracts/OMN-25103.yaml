@@ -42,15 +42,6 @@ requirements:
           a program a lab host runs, so the lab does not refuse it -- falsifier: uv run pytest -q
           tests/contracts/test_omn25103_lab_item_allowed_program.py fails on omnimarket dev, where the item starts
           with env
-  - id: req-omn25103-user-only-provision
-    statement: The dev identity provision node can create one read-only dev-realm user with a named realm role and no tenant.
-    acceptance:
-      - id: AC7
-        statement: >-
-          AC7: node_dev_identity_provision_effect has a user-only mode that creates one dev-realm user with a named
-          realm role and no tenant, and node_secret_store_effect declares dev_dashboard_reader_password for its
-          password -- falsifier: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_user_only_mode.py
-          -q -n 0 -p no:randomly --no-cov; on the base commit the command has no user_only field and the test file is absent
 evidence_requirements:
   - kind: tests
     description: The floor integration writer and the integration publisher.
@@ -128,3 +119,23 @@ dod_evidence:
         check_value: >-
           bash -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dev_identity_provision_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q "^user_only:"'
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn25103-retire-deleted-ac7
+    description: >-
+      AC7 was deleted from OMN-25103; the ticket now carries AC1 to AC6 only. This item retires the claim the
+      user-only provision item made on the deleted criterion. Its test reads this contract and fails on dev,
+      where AC7 is still claimed and its requirement is still declared. It binds AC6, the criterion that
+      keeps this contract's items runnable.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/contracts/test_omn25103_deleted_ac7_retired.py
+        cwd: "${OMNI_HOME}/omnimarket"
+    supersedes_ac_binding:
+      - item: dod-omn25103-user-only-provision
+        label: AC7
+        reason_kind: no_longer_applicable
+        reason: AC7 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries.
+        retired_by: q-close25103-0630
+        retired_at: "2026-11-28T06:55:00Z"
