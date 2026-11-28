@@ -32,10 +32,25 @@ handler:
   output_model: omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list.ModelMcpToolsListResult
 
 dependencies:
-  - name: ProtocolMcpRegistryReader
+  - name: registry
     dependency_type: protocol
+    class_name: ProtocolMcpRegistryReader
+    module: omnimarket.nodes.node_mcp_server_effect.ports.protocol_mcp_registry_reader
     description: Reads every registration row with its contract's mcp block; the node refuses to start without it
     required: true
+
+# Declared dependency injection (OMN-15920). The runtime builds HandlerMcpToolsList with no
+# argument; the handler takes its `registry` dependency from registry_factory, a callable this
+# contract names, and reads the database address from the environment variable named here.
+config:
+  registry_factory: "omnimarket.nodes.node_mcp_server_effect.handlers.reader_registry_projections:build_registry_reader"
+  projection_dsn_env: "OMNIBASE_INFRA_DB_URL"
+  # Bootstrap overlay: the tools the server lists until a settings store carries the allow list.
+  # `delegate` is the first tool of the one-MCP-server plan; the node that owns it declares it
+  # in its own contract's mcp block. A request that carries an overlay replaces this one.
+  overlay:
+    allowed_tools:
+      - delegate
 
 descriptor:
   node_archetype: effect

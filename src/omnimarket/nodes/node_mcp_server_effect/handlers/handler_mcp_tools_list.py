@@ -4,6 +4,10 @@
 
 from __future__ import annotations
 
+from omnimarket.handlers.container.container_overlay_dependencies import (
+    packaged_contract_value,
+    packaged_factory,
+)
 from omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list import (
     EnumMcpRegistrationState,
     ModelMcpToolListing,
@@ -18,12 +22,24 @@ from omnimarket.nodes.node_mcp_server_effect.ports.protocol_mcp_registry_reader 
     ProtocolMcpRegistryReader,
 )
 
+PACKAGE = "omnimarket.nodes.node_mcp_server_effect"
+
 
 class HandlerMcpToolsList:
-    """One eligibility rule; the code names no tool."""
+    """One eligibility rule; the code names no tool.
 
-    def __init__(self, registry: ProtocolMcpRegistryReader) -> None:
-        self._registry = registry
+    The runtime hands the handler no argument. The registry reader is the contract's
+    declared ``registry`` dependency, built by the factory ``config.registry_factory``
+    names; a caller may inject its own reader. The overlay of a request that carries none
+    is the contract's bootstrap overlay (``config.overlay``).
+    """
+
+    def __init__(self, registry: ProtocolMcpRegistryReader | None = None) -> None:
+        self._registry: ProtocolMcpRegistryReader = (
+            registry
+            if registry is not None
+            else packaged_factory(PACKAGE, "config", "registry_factory")()
+        )
 
     def handle(self, request: ModelMcpToolsListRequest) -> ModelMcpToolsListResult:
         try:
@@ -35,7 +51,13 @@ class HandlerMcpToolsList:
                 EnumMcpServerRefusal.REGISTRY_UNREADABLE,
                 f"the registry could not be read: {exc}",
             ) from exc
-        allowed = request.overlay.allowed_tools
+        allowed = (
+            request.overlay.allowed_tools
+            if request.overlay is not None
+            else frozenset(
+                packaged_contract_value(PACKAGE, "config", "overlay", "allowed_tools")
+            )
+        )
         listed: dict[str, ModelMcpToolListing] = {}
         for row in rows:
             if row.state is not EnumMcpRegistrationState.ACTIVE:

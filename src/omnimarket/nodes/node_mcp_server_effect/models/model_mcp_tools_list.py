@@ -63,7 +63,10 @@ class ModelMcpOverlay(BaseModel):
 class ModelMcpToolsListRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    overlay: ModelMcpOverlay
+    overlay: ModelMcpOverlay | None = Field(
+        default=None,
+        description="The overlay of the call; absent, the contract's bootstrap overlay applies.",
+    )
 
 
 class ModelMcpToolListing(BaseModel):

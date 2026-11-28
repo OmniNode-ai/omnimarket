@@ -14,6 +14,8 @@ requirements:
         statement: "AC1: tools/list lists an ACTIVE exposed allowed node and no inactive, unexposed or unallowed one; a duplicate name and an unreadable registry are named refusals -- falsifier: uv run pytest tests/nodes/node_mcp_server_effect/test_handler_mcp_tools_list.py -q fails at origin/dev (the node is absent)"
       - id: AC2
         statement: "AC2: the projection-backed registry reader lists an ACTIVE exposed tool from a projection whose mcp block carries a tools list, and refuses by name (infra_tools_list_absent) when the installed infra drops the list -- falsifier: uv run pytest tests/nodes/node_mcp_server_effect/test_handler_mcp_registry_projection_rows.py -q fails at origin/dev (the node is absent)"
+      - id: AC3
+        statement: "AC3: the runtime builds HandlerMcpToolsList with no argument, the registry dependency comes from the factory the node contract names, and a request with no overlay lists the tools of the contract's bootstrap overlay (delegate) -- falsifier: uv run pytest tests/nodes/node_mcp_server_effect/test_contract_wiring.py -q fails at the previous head (TypeError, missing registry; empty allow list)"
 evidence_requirements:
   - kind: "ci"
     description: "CI passes on merge PR"
@@ -58,6 +60,13 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_mcp_server_effect/test_handler_mcp_registry_projection_rows.py tests/test_handler_routing_boot_resolvable.py -q -p no:cacheprovider"
+  - id: "dod-omn15920-contract-declared-injection"
+    description: "The handler builds with no argument, takes its registry from the contract-declared factory (a named refusal when the address is unset) and lists the bootstrap overlay's tool for a request with no overlay"
+    source: "manual"
+    binds_ac: [AC3]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_mcp_server_effect/test_contract_wiring.py -q -p no:cacheprovider"
   - id: "dod-omn15920-tools-list-integration-proof"
     description: "Local Done gate only, so it binds no criterion here: the tools/list handler tests run on a lab host at the pushed sha (host, sha and exit code in the pull request body)"
     source: "manual"
