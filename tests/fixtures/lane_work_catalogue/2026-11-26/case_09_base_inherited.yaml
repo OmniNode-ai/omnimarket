@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Catalogue fixture (OMN-26701): a pinned snapshot of the 2026-11-26 failure,
+# the raw results quoted verbatim from the sources below, each with the sha256 of
+# its quote. Roots: ledger (the ledger directory: path `live` is the live file,
+# `roll:<day>-split` an archive roll), remote-lane-receipts, open-work (the orchestrator handoff).
+schema: "lane_work_catalogue_fixture.v1"
+day: "2026-11-26"
+case: "case_09_base_inherited"
+catalogue_row: "9"
+summary: "Reds caused by an old base branch: the same test failed on dev itself."
+w_rows:
+  - "W942"
+  - "W949"
+entry_state: "red"
+sources:
+  - id: "s1"
+    role: "raw_result"
+    root: "ledger"
+    path: "live"
+    row_timestamp: "2026-11-26T09:43:36Z"
+    lane: "orchestrator-31d9-swarm"
+    row_kind: "MSG"
+    quote: "| Root read by the orchestrator at 09:45Z: Tests (Split 6/20) fails on dev itself: tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion, AssertionError OMN-22708.yaml:dod-omn22708-recorded-rows: use binds_ac, not ac_bindings (run 45785765964 job 139793667679, on the release bot bump omnimarket#6919; 1 failed, 5215 passed). Lane fix22708-64400 owns the contract fix on dev; do not fix it again. Once it merges, merge origin/dev into your change once and rerun."
+    sha256: "1efa514e4b9225d75434a21c829d4b64fd10d756015aee021bfa3d455744a1a7"
+    redacted: false
+    note: "the failing log read: Split 6 fails on dev itself"
+  - id: "s2"
+    role: "evidence"
+    root: "remote-lane-receipts"
+    path: "red6909-61400/rlane-red6909-61400-e4acac.json"
+    lane: "red6909-61400"
+    field: "result"
+    quote: "The red comes from CI's merge of dev, not from the branch."
+    sha256: "96a739e427491b33044243ac87f5c217aedf8282f0af66052f532dd50b6675d2"
+    redacted: false
+  - id: "s3"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W942"
+    quote: "| W942 | 14:45Z ROOT of the omnimarket reds: dev contract OMN-22708.yaml uses ac_bindings, test_every_repo_contract_binds_every_criterion requires binds_ac (Split 6 on 6919 6909 6914); fix22708 placed TOP. Post-release bump exists: omnimarket#6919 by the release bot (release checks green, red only on this split) | orchestrator | +15m |"
+    sha256: "12217a9d38eba1d4d4b25cdfa0a2cae839d7126603315f4b4a6194caf4290ddd"
+    redacted: false
+  - id: "s4"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W949"
+    quote: "| W949 | 16:00Z release identity blocks infra too: dev 0.38.85 published; bot bump omnibase_infra#6310 DIRTY -> bump6310 resolves; omnimarket bump 6919 updated, waits checks; openprs2r: most omnimarket reds are Split 6 from the old dev (need a dev merge) or release identity; MCP infra half staged as a patch, blocked by release identity | orchestrator | +20m |"
+    sha256: "5904994f5e880654466dcc49ecc57e6b33e7d0ae4e8cf252192875cdce0e5e6b"
+    redacted: false
+replay:
+  - step: "raw_result"
+    source: "s1"
+    expect:
+      event:
+        kind: "log_read"
+        red_kind: "base_inherited"
+      state: "fixing"
+      action:
+        kind: "agent"
+        do: "merge the base branch, commit"
+        five_whys_owed: false
+expected:
+  final_state: "fixing"
+  action:
+    kind: "agent"
+    do: "merge the base branch, commit"
+    five_whys_owed: false
+  then: "re-prove at the new head"
