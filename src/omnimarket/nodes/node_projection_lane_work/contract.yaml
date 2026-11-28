@@ -1,0 +1,156 @@
+---
+name: projection_lane_work
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnibase_core.models.lane_work.model_lane_work_receipt.ModelLaneWorkReceipt
+description: >
+  OMN-26708 (task 8 of the lane work orchestrator plan). Folds the transition
+  receipts of task 1's types into ONE row per workflow: its current state and,
+  once it ends, its terminal fields. The row answers two questions: what a
+  workflow is doing now (every row), and which workflows ended (the terminal
+  rows, the orchestrator's view).
+
+  Every column is derived from receipt fields. The duration is the span from the
+  first receipt seen to the latest one, the help count is the number of receipts
+  that entered help_requested, and the transition count is the number of receipts
+  of kind transition. The upsert is guarded on seq, so replaying the transition
+  topic folds nothing the table already holds.
+
+handler:
+  module: omnimarket.nodes.node_projection_lane_work.handlers.handler_projection_lane_work
+  class: HandlerProjectionLaneWork
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed: a routed pure fold is handed the raw event beside
+    # the writer and cannot report a write. The writer calls the fold in process.
+    - operation: lane_work_projection_writer
+      handler:
+        name: LaneWorkProjectionWriter
+        module: omnimarket.nodes.node_projection_lane_work.handlers.handler_projection_lane_work
+      handler_module: omnimarket.nodes.node_projection_lane_work.handlers.handler_projection_lane_work
+
+terminal_event: onex.evt.omnimarket.projection-lane-work-applied.v1
+
+golden_path:
+  - "The lane work orchestrator publishes a transition receipt on onex.evt.omnimarket.lane-work-transition.v1 before any of its outputs"
+  - "This reducer upserts the receipt's workflow row under a seq guard, so a replay or redelivery folds nothing"
+  - "The whole row is read back and republished as a snapshot delta, and a terminal row also to the terminal exposure" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-lane-work-applied.v1"
+
+dod_evidence:
+  - test: tests/unit/nodes/node_projection_lane_work/test_lane_work_writer.py::test_ac1_the_writer_writes_n_rows_after_n_workflows
+    description: "AC1 - N workflows give N rows and no zero-rows log line"
+  - test: tests/unit/nodes/node_projection_lane_work/test_lane_work_fold.py::test_ac2_replaying_the_transition_topic_twice_gives_the_same_table
+    description: "AC2 - a double fold equals a single fold"
+  - test: tests/unit/nodes/node_projection_lane_work/test_lane_work_fold.py::test_ac3_duration_and_help_counts_are_derived_from_receipt_timestamps
+    description: "AC3 - the derived columns are non-null and come from receipt timestamps"
+  - test: tests/unit/nodes/node_projection_lane_work/test_lane_work_fold.py::test_ac4_the_terminal_rows_query_returns_only_ended_workflows
+    description: "AC4 - one live and two ended workflows give two terminal rows"
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.lane-work-transition.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-lane-work-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-lane-work-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-lane-work-applied.v1
+
+# The producer is the lane work orchestrator (task 6 of the plan), which has not
+# landed; declared here so the topic graph closes on this contract.
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.lane-work-transition.v1
+    producer: "the lane work orchestrator's fold handler, which publishes each transition receipt before its outputs"
+
+db_io:
+  db_tables:
+    - name: lane_work_workflow
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_lane_work_workflow.sql"
+      access: read_write
+      role: lane_work_projection
+
+  idempotency_key: "workflow_id"
+
+projection_api:
+  expose: true
+  exposures:
+    # Query one: current state by workflow, for anyone who asks.
+    - topic: "onex.snapshot.projection.lane-work.workflow.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
+      key_grain: "mutable"
+      table: "lane_work_workflow"
+      schema: "omnidash_analytics"
+      columns: &columns
+        - "workflow_id"
+        - "state"
+        - "last_event_kind"
+        - "seq"
+        - "started_at"
+        - "last_receipt_at"
+        - "transitions_taken"
+        - "help_request_count"
+        - "duration_seconds"
+        - "terminal_kind"
+        - "ended_at"
+        - "projected_at"
+      order_by: "workflow_id ASC"
+      cursor_column: "workflow_id"
+      freshness_column: "projected_at"
+      limit: 100
+      bus_backed: true
+      key_columns:
+        - "workflow_id"
+      consumers: none
+      consumers_reason: >-
+        The orchestrator's session reads terminal events and the terminal rows;
+        the reader of this exposure is the status query a later ticket adds.
+    # Query two: the terminal rows, the orchestrator's view. The writer
+    # republishes to this exposure only a row whose terminal_kind is set. It reads
+    # the same relation as query one: the vendored migration creates no view.
+    - topic: "onex.snapshot.projection.lane-work.terminal.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
+      key_grain: "mutable"
+      table: "lane_work_workflow"
+      schema: "omnidash_analytics"
+      columns: *columns
+      order_by: "workflow_id ASC"
+      cursor_column: "workflow_id"
+      freshness_column: "projected_at"
+      limit: 100
+      bus_backed: true
+      key_columns:
+        - "workflow_id"
+      consumers: none
+      consumers_reason: >-
+        The reader of the terminal rows is the lane work orchestrator's session,
+        which reads them over the bus rather than through a dashboard component.
+
+# The runtime reads the transition receipts and writes the applied event. The
+# orchestrator's WRITE on the transition topic is declared by its own contract.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-work-transition.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-work-transition.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-lane-work-applied.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-lane-work-applied.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.lane-work.workflow.v1, operation: WRITE}  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.lane-work.workflow.v1, operation: DESCRIBE}  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.lane-work.terminal.v1, operation: WRITE}  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.lane-work.terminal.v1, operation: DESCRIBE}  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-lane-work-malformed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-lane-work-malformed.v1, operation: DESCRIBE}
+
+metadata:
+  transport_type: kafka
