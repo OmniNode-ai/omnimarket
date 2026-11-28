@@ -40,6 +40,9 @@ from omnimarket.nodes.node_workflow_gateway_effect.handlers.http_dependencies im
     WorkflowGatewayDependencyProvider,
     load_routes,
 )
+from omnimarket.nodes.node_workflow_gateway_effect.handlers.identity_api_key_postgres import (
+    ApiKeyStoreSchemaOutdatedError,
+)
 from omnimarket.nodes.node_workflow_gateway_effect.models.enum_workflow_refusal_code import (
     EnumWorkflowRefusalCode,
 )
@@ -89,9 +92,10 @@ async def _authenticate(
         identity = await deps.identity.resolve(headers)
     except Exception as exc:
         logger.warning("caller identity resolver failed (%s)", type(exc).__name__)
-        return JSONResponse(
-            status_code=503, content={"detail": AUTH_UNAVAILABLE_DETAIL}
-        )
+        unavailable = {"detail": AUTH_UNAVAILABLE_DETAIL}
+        if isinstance(exc, ApiKeyStoreSchemaOutdatedError):
+            unavailable["code"] = exc.code
+        return JSONResponse(status_code=503, content=unavailable)
     if identity is None:
         presented = bool(header_value(headers, deps.api_key_header)) or bool(
             header_value(headers, "authorization")

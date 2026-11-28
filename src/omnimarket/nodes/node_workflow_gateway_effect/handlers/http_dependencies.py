@@ -54,7 +54,7 @@ from omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_workflow_sub
     HandlerWorkflowSubmit,
 )
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.identity_api_key_postgres import (
-    PostgresApiKeyTenantIdentity,
+    build_api_key_identity,
 )
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.publisher_bus import (
     KafkaWorkflowPublisher,
@@ -77,6 +77,9 @@ from omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_handler
 )
 from omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_http_route import (
     ModelWorkflowHttpRoute,
+)
+from omnimarket.nodes.node_workflow_gateway_effect.protocols.protocol_workflow_store import (
+    WorkflowStoreUnavailableError,
 )
 from omnimarket.protocols.protocol_http_tenant_identity import (
     ProtocolHttpTenantIdentity,
@@ -193,11 +196,16 @@ class OverlayWorkflowGatewayDependencies:
         except WorkflowCatalogError as exc:
             logger.warning("workflow gateway catalog refused (%s)", type(exc).__name__)
             return None
-        self._deps = self._build(overlay, catalog)
+        try:
+            self._deps = await self._build(overlay, catalog)
+        except WorkflowStoreUnavailableError as exc:
+            # The key store could not be probed: not cached, so the next request builds again.
+            logger.warning("workflow gateway key store unavailable (%s)", exc)
+            return None
         return self._deps
 
     @staticmethod
-    def _build(
+    async def _build(
         overlay: ModelWorkflowGatewayOverlay, catalog: WorkflowCatalog
     ) -> WorkflowGatewayDependencies:
         config = load_contract_config()
@@ -217,6 +225,14 @@ class OverlayWorkflowGatewayDependencies:
             rpm_window_key=overlay.quota.rpm_window_key,
             clock=lambda: datetime.now(UTC),
         )
+        # The probe runs at build through the resolver's own pool; an absent expires_at column binds the 503 variant.
+        try:
+            api_key = await build_api_key_identity(
+                pool=pool, header=overlay.api_key.header, prefix=overlay.api_key.prefix
+            )
+        except WorkflowStoreUnavailableError:
+            await pool.close()
+            raise
         publisher = KafkaWorkflowPublisher(
             bootstrap_servers_env=config["broker"]["bootstrap_servers_env"],
             timeout_seconds=overlay.publish_timeout_seconds,
@@ -225,9 +241,7 @@ class OverlayWorkflowGatewayDependencies:
             bearer=BearerJwtTenantIdentity(
                 overlay.identity, JwksSigningKeyProvider(overlay.identity)
             ),
-            api_key=PostgresApiKeyTenantIdentity(
-                pool=pool, header=overlay.api_key.header, prefix=overlay.api_key.prefix
-            ),
+            api_key=api_key,
             api_key_header=overlay.api_key.header,
         )
         settings = ModelWorkflowSubmitSettings(

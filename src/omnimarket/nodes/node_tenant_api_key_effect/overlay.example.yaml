@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the deployment settings repository.
+lane: example-lane
+# Set only in the dev overlay; read by the CLI's dev-secret guard.
+dev_secret_store_environment: dev
+# Unset means a key may be perpetual (dev). The hosted overlay sets it, which bounds every key and refuses a null expiry.
+max_lifetime_days: null
+# The bus the node's own entry dials to send a command from outside the lane's runtime.
+event_bus:
+  type: kafka
+  lane: example-lane
