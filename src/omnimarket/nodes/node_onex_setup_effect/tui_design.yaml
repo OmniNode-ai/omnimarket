@@ -64,6 +64,7 @@ shortcuts:
   - {path: [model], action: model, help: Pick the model every task tries first.}
   - {path: [delegation], action: delegation, help: Turn delegation on or off for Claude Code.}
   - {path: [dashboard], action: dashboard, help: "Start, open or stop the local dashboard."}
+  - {path: [docker], action: docker, help: "Start the full self-hosted stack with Docker."}
   - {path: [clear], action: clear, help: Clear the output.}
   - {path: [help], action: help, help: Show keys and how commands work.}
   - {path: [quit], action: quit, help: Leave the TUI.}
@@ -75,6 +76,7 @@ customer_commands:
   - [model]
   - [delegation]
   - [dashboard]
+  - [docker]
   - [doctor]
   - [metering]
   - [clear]
@@ -210,6 +212,7 @@ model_table:
     model: "Tab next screen · Enter selects · A auto · R remove · I details · / search · F filter · S sort · Esc back"
     delegation: "Tab next screen · Space switches · I details · Ctrl+S saves · Esc back"
     dashboard: "Tab next screen · S start · Enter opens · X stop · Esc back"
+    docker: "Tab next screen · S start · Esc back"
 
 # /delegation: one switch, the prompt hook; subagents always run on Claude (OMN-23413).
 delegation:
@@ -271,6 +274,21 @@ dashboard:
   stopped: "Dashboard stopped"
   failed: "Dashboard {action} did not work: {reason}"
 
+# /docker (OMN-26689): the full self-hosted stack, for users who want more
+# features. Start runs the onex setup command below; a failure is read against
+# `causes` and one plain sentence is shown, never the raw output.
+docker:
+  title: Full self-hosted stack
+  start: [setup, --path, docker, --no-interactive]
+  idle: "Docker is optional. Press S to start the full stack on this machine."
+  started: "The full stack is starting."
+  failed: "The stack did not start. Run onex setup --path docker in a terminal to see why."
+  causes:
+    - match: ["command not found", "no such file or directory", "docker was not found", "not installed"]
+      say: "Docker is not installed; install Docker Desktop or Docker Engine, then press S again."
+    - match: ["cannot connect to the docker daemon", "daemon running", "docker daemon", "is the docker", "daemon is not running"]
+      say: "Docker is not running; start Docker Desktop or the docker service, then press S again."
+
 # /config, /model and /delegation are three tabs of one place: Tab and
 # Shift+Tab move between them, and a click on a tab opens it.
 tabs:
@@ -278,6 +296,7 @@ tabs:
   - {id: model, label: "  Model  "}
   - {id: delegation, label: "  Delegation  "}
   - {id: dashboard, label: "  Dashboard  "}
+  - {id: docker, label: "  Docker  "}
 
 # Every word the /config, /model and /delegation screens show; {name} parts
 # are filled in. The screens hold no sentence of their own (OMN-23413 AC27).

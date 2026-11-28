@@ -38,6 +38,7 @@ _KEYS = {
     "/model": ("#pkeys", None),
     "/delegation": ("#dkeys", "#dbuttons"),
     "/dashboard": ("#bkeys", "#bbuttons"),
+    "/docker": ("#xkeys", "#xbuttons"),
 }
 
 

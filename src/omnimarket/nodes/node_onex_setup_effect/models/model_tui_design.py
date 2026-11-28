@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 _COLOUR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 EnumTuiAction = Literal[
-    "config", "model", "delegation", "dashboard", "clear", "help", "quit"
+    "config", "model", "delegation", "dashboard", "docker", "clear", "help", "quit"
 ]
 
 
@@ -238,6 +238,32 @@ class ModelTuiDashboard(BaseModel):
     failed: str
 
 
+class ModelTuiDockerCause(BaseModel):
+    """One reason Start cannot run: the phrases a failed run's output holds
+    (matched without case) and the plain sentence the tab shows instead."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    match: tuple[str, ...] = Field(min_length=1)
+    say: str = Field(min_length=1)
+
+
+class ModelTuiDocker(BaseModel):
+    """/docker (OMN-26689): the self-hosted stack's tab. The onex command Start
+    runs and every sentence are data here; the screen holds none of them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str
+    start: tuple[str, ...] = Field(min_length=1)
+    idle: str
+    started: str
+    failed: str
+    #: Tried in order against a failed Start's output; the first match is shown
+    #: alone and the raw text never is.
+    causes: tuple[ModelTuiDockerCause, ...] = Field(min_length=1)
+
+
 class ModelTuiActivity(BaseModel):
     """The live line while a task runs, as coding agents' CLIs show (OMN-23413)."""
 
@@ -277,6 +303,7 @@ class ModelTuiDesign(BaseModel):
     model_table: ModelTuiModelTable
     delegation: ModelTuiDelegation
     dashboard: ModelTuiDashboard
+    docker: ModelTuiDocker
     activity: ModelTuiActivity
     tabs: tuple[ModelTuiTabSpec, ...] = Field(min_length=1)
     #: The model screens' sentences, by name; ``{name}`` parts are filled in.
