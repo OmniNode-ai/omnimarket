@@ -121,3 +121,29 @@ def test_caller_command_env_wins_over_the_host_bus_append_command(
         environ={"X": "mine", "ONEX_LEDGER_BUS_APPEND_COMMAND": "/py append"},
     )
     assert run.call_args.args[0][:2] == ["mine", "append"]
+
+
+def test_host_bus_append_stamps_the_request_id_cell_the_ledger_host_requires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bus CLI refuses a row without its own req= cell (exit 65); the default command stamps it itself."""
+    run = Mock(return_value=subprocess.CompletedProcess([], 0, "{}", ""))
+    monkeypatch.setattr(module.subprocess, "run", run)
+    request_id = module.request_id_for(NAMESPACE, "k")
+    environ = {"ONEX_LEDGER_BUS_APPEND_COMMAND": "/py append"}
+    module.append_row_via_bus(
+        "ts | STATUS | lane=a",
+        lane="a-lane",
+        request_id=request_id,
+        command_env="UNSET_COMMAND_ENV",
+        environ=environ,
+    )
+    assert run.call_args.kwargs["input"] == f"ts | STATUS | lane=a | req={request_id}"
+    module.append_row_via_bus(
+        f"ts | STATUS | lane=a | req={request_id}",
+        lane="a-lane",
+        request_id=request_id,
+        command_env="UNSET_COMMAND_ENV",
+        environ=environ,
+    )
+    assert run.call_args.kwargs["input"] == f"ts | STATUS | lane=a | req={request_id}"

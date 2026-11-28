@@ -47,6 +47,11 @@ def append_row_via_bus(
             return False, "ledger command is empty"
     elif values.get(HOST_BUS_APPEND_COMMAND_ENV, "").strip():
         command = shlex.split(values[HOST_BUS_APPEND_COMMAND_ENV])
+        # The bus command sends the rows as given and the ledger host refuses a row with no req= cell of its request id.
+        row = "\n".join(
+            line if "| req=" in line else f"{line} | req={request_id}"
+            for line in row.split("\n")
+        )
     else:
         command = [*shlex.split(DEFAULT_COMMAND), "append"]
     try:
