@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26733
+title: "The omnimarket post-release dev bump lands after each release, so commits that touch src pass the release identity hook"
+summary: The 0.4.331 post-release bump is red on the release CHANGELOG.md the bump left on the tree; the bump script now recognises the file the release squash added, and the file is removed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26733-bump-red-fixed-at-source
+    statement: Each red check on the post-release bump is fixed at its source or named as a base red with its commit and job.
+    acceptance:
+      - id: AC2
+        statement: "AC2: each red check on the bump is fixed at its source or named as a base red with its commit and job -- falsifier: a red check on the bump with no fix and no named cause"
+evidence_requirements:
+  - kind: tests
+    description: The release CHANGELOG removal tests, which fail for the squash-added file on dev at fb7dff0b42 and pass with the fix.
+    command: uv run pytest tests/ci/test_release_cut_changelog_omn26500.py tests/ci/test_changelog_absent_omn26488.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26733-bump-removes-squashed-changelog
+    description: "omnimarket#7056 (the 0.4.331 bump) failed Tests (Split 3/20) with CHANGELOG.md present on the tree. The v0.4.330 tag commit holds no CHANGELOG.md; the release PR squash (ba676f1055) added it, so the bump script, which read only the tag commit, kept it. The script now also removes a CHANGELOG.md that opens on the tag's heading when the tag commit lacks the file, and the file is removed from dev."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_release_cut_changelog_omn26500.py tests/ci/test_changelog_absent_omn26488.py -q --no-cov -n 0 -p no:randomly
+        cwd: .

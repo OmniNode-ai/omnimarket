@@ -203,6 +203,32 @@ def apply_decision(pyproject: Path, decision: BumpDecision) -> bool:
 CHANGELOG_PATH = "CHANGELOG.md"
 
 
+def _squash_added_changelog(root: Path, tag: str, changelog: Path) -> bool:
+    """Whether the tag's tree has no CHANGELOG.md and the file opens on the tag's heading.
+
+    The release PR's squash on dev adds the file after the tag commit, so the tag's
+    own commit never lists it as added (OMN-26733). A tag that already carried the
+    file, an unreadable tag, or a file under another heading answers ``False``.
+    """
+    base = ["git", "-C", str(root)]
+    known = subprocess.run(
+        [*base, "rev-parse", "--verify", "-q", f"{tag}^{{commit}}"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    carried = subprocess.run(
+        [*base, "cat-file", "-e", f"{tag}^{{commit}}:{CHANGELOG_PATH}"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if known.returncode != 0 or carried.returncode == 0:
+        return False
+    first = changelog.read_text(encoding="utf-8").splitlines()[:1]
+    return bool(first) and first[0].startswith(f"## {tag}")
+
+
 def remove_cut_changelog(root: Path, released: str, apply: bool) -> bool:
     """Whether ``CHANGELOG.md`` is on the tree and the released tag's commit added it.
 
@@ -215,7 +241,11 @@ def remove_cut_changelog(root: Path, released: str, apply: bool) -> bool:
     args += [f"{tag}^1", f"{tag}^{{commit}}", "--", CHANGELOG_PATH]
     git = ["git", "-C", str(root), *args]
     listing = subprocess.run(git, capture_output=True, text=True, timeout=60)
-    if not changelog.is_file() or listing.stdout.strip() != CHANGELOG_PATH:
+    if not changelog.is_file():
+        return False
+    if listing.stdout.strip() != CHANGELOG_PATH and not _squash_added_changelog(
+        root, tag, changelog
+    ):
         return False
     if apply:
         changelog.unlink()

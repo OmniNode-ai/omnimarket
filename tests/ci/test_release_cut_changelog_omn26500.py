@@ -100,3 +100,30 @@ def test_without_apply_the_file_is_reported_and_kept(repo: Path) -> None:
     assert remove_cut_changelog(repo, "0.4.324", apply=True) is True
     assert not (repo / "CHANGELOG.md").exists()
     assert remove_cut_changelog(repo, "0.4.324", apply=True) is False
+
+
+def test_a_changelog_the_squash_landing_added_under_the_release_heading_is_recognised(
+    repo: Path,
+) -> None:
+    """The tag commit carries no CHANGELOG.md; the release PR's squash on dev adds it."""
+    _commit(repo, "chore(release): release v0.4.330", {"pyproject.toml": "v\n"})
+    _git(repo, "tag", "v0.4.330")
+    _commit(
+        repo,
+        "chore: release 0.4.330 (squash)",
+        {"CHANGELOG.md": "## v0.4.330 (2026-11-28)\n\n### Release\n"},
+    )
+
+    assert remove_cut_changelog(repo, "0.4.330", apply=True) is True
+    assert not (repo / "CHANGELOG.md").exists()
+
+
+def test_a_changelog_under_another_release_heading_stays_when_the_tag_lacks_it(
+    repo: Path,
+) -> None:
+    _commit(repo, "chore(release): release v0.4.330", {"pyproject.toml": "v\n"})
+    _git(repo, "tag", "v0.4.330")
+    _commit(repo, "notes", {"CHANGELOG.md": "## v0.4.299\n"})
+
+    assert remove_cut_changelog(repo, "0.4.330", apply=True) is False
+    assert (repo / "CHANGELOG.md").is_file()
