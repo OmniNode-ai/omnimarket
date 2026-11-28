@@ -254,3 +254,27 @@ def test_an_unknown_sign_in_is_refused_before_the_body_is_read(
     assert response.status_code == 401
     if gateway.store is not None:
         assert gateway.store.secrets == {}
+
+
+def test_an_api_key_sign_in_on_disk_reads_back_as_signed_in(tmp_path: Path) -> None:
+    """``onex cloud login`` / ``onex auth login --api-key-stdin`` store an API key
+    and no client id; the signed-in reader must still see that sign-in."""
+    from omnibase_infra.gateway.client.store_gateway_credential import (
+        StoreGatewayCredential,
+    )
+
+    from omnimarket.handlers.routing.gateway_tenant_key_client import (
+        load_signed_in_gateway,
+    )
+
+    StoreGatewayCredential(onex_home=tmp_path).save_api_key(
+        tenant_slug="tenant-a",
+        api_key="placeholder-gateway-key",
+        base_url="http://gateway.example.test:8085",
+    )
+
+    signed = load_signed_in_gateway(onex_home=tmp_path)
+
+    assert signed is not None
+    assert signed[0] == "http://gateway.example.test:8085"
+    assert signed[1].get_secret_value() == "placeholder-gateway-key"
