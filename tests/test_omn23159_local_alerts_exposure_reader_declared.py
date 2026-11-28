@@ -81,8 +81,8 @@ def test_exposure_stays_bus_backed_in_the_gate_input() -> None:
     assert block["schema"] == "omnidash_analytics"
 
 
-def test_delegation_daily_exposure_declares_a_reasoned_opt_out() -> None:
-    """No reader exists for the daily aggregate (no_reader): declare the gate's opt-out."""
+def test_delegation_daily_exposure_declares_no_opt_out_over_its_live_reader() -> None:
+    """omnidash local-page:overview.page.yaml reads this topic (OMN-26623)."""
     path = NODES / "node_projection_delegation" / "contract.yaml"
     data = yaml.safe_load(path.read_text())
     blocks = [
@@ -91,8 +91,15 @@ def test_delegation_daily_exposure_declares_a_reasoned_opt_out() -> None:
         if b.get("topic") == "onex.snapshot.projection.delegation.daily.v1"
     ]
     assert len(blocks) == 1
-    assert blocks[0].get("consumers") == "none"
-    assert str(blocks[0].get("consumers_reason", "")).strip()
+    assert "consumers" not in blocks[0], (
+        "omnidash local-page:overview.page.yaml reads this topic, so a "
+        "`consumers: none` opt-out is a stale_opt_out to the gate "
+        "(exposure-reader-coverage): delete it rather than keep an amnesty entry"
+    )
+    assert "consumers_reason" not in blocks[0], (
+        "`consumers_reason` is deleted with `consumers: none`; the two are "
+        "declared together or not at all"
+    )
 
 
 def test_consumers_reason_never_stands_without_consumers_none() -> None:
