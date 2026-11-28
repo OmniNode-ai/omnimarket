@@ -119,3 +119,17 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cli/test_omn24052_operator_surface_in_runtime_image.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn24052-settings-store-provision
+  description: 'the dev settings store is declared and provisioned by a node: a lane the contract does not declare and a role outside the writer are refused before any secret read or Valkey call, the writer password is generated create-only into the secret store and never appears in a result or log, the writer row is applied and the login is checked on the store database, a second run changes nothing, a database held by another user and a login holding another password are refused, and a stale row that accepts the stored password is applied again.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_settings_store_provision_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24052-store-login-rows-select
+  description: 'every access-list row the settings store renders lets its login SELECT the numbered database the store client opens, and onex settings list reads every setting on one event loop against a store whose connection belongs to the first loop.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store/test_valkey_acl_rules.py tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

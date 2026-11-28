@@ -55,3 +55,10 @@ def test_valkey_acl_rules_every_login_starts_from_nothing() -> None:
     for login in ("w-login", "r-login", "c-login"):
         rules = _rules(login)
         assert rules[0] == "reset"
+
+
+def test_valkey_acl_rules_every_login_may_select_its_database() -> None:
+    # The store's client connects with a database number, so it runs SELECT first; without +select the login
+    # authenticates and then every command is refused (measured on the dev Valkey, OMN-24052).
+    for login in ("w-login", "r-login", "c-login"):
+        assert "+select" in _rules(login)

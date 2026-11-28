@@ -13,7 +13,18 @@ from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
 
-READ_COMMANDS = ("+get", "+mget", "+exists", "+ttl", "+type", "+scan", "+ping")
+# +select: the store's client opens its numbered database with SELECT before any command, so a login without it authenticates and
+# is then refused everything (measured on the dev Valkey, OMN-24052). The key pattern still bounds what the login can touch.
+READ_COMMANDS = (
+    "+get",
+    "+mget",
+    "+exists",
+    "+ttl",
+    "+type",
+    "+scan",
+    "+ping",
+    "+select",
+)
 WRITE_COMMANDS = ("+set", "+del", "+expire", "+persist")
 
 
@@ -56,8 +67,34 @@ def render_store_acl_commands(
     ]
 
 
+def render_login_acl_command(
+    logins: ModelValkeyStoreLogins, role: str, *, password: str
+) -> tuple[str, ...]:
+    """The one ``ACL SETUSER`` row of a role (``writer``, ``reader`` or ``cache``), given that login's password alone."""
+    names = {
+        "writer": logins.writer_login,
+        "reader": logins.reader_login,
+        "cache": logins.cache_login,
+    }
+    login = names[role]
+    placeholders = dict.fromkeys(names.values(), "")
+    placeholders[login] = password
+    rows = dict(
+        zip(
+            names,
+            render_store_acl_commands(logins, passwords=placeholders),
+            strict=True,
+        )
+    )
+    return rows[role]
+
+
 def _setuser(login: str, passwords: Mapping[str, str], *rules: str) -> tuple[str, ...]:
     return ("ACL", "SETUSER", login, "reset", "on", f">{passwords[login]}", *rules)
 
 
-__all__ = ["ModelValkeyStoreLogins", "render_store_acl_commands"]
+__all__ = [
+    "ModelValkeyStoreLogins",
+    "render_login_acl_command",
+    "render_store_acl_commands",
+]
