@@ -3,8 +3,8 @@
 """The onex terminal UI (OMN-23413 Amendments 2 and 3), driven headless.
 
 Failure modes:
-  F1. The `/` palette lists a hand-kept subset, so a command a package adds
-      through an entry point never appears (AC17).
+  F1. The `/` palette lists more or fewer commands than
+      ``tui_design.yaml``'s ``customer_commands`` declares (AC17).
   F2. A palette command runs something other than the CLI command it names.
   F3. Free text is not delegated, or its answer, model, cost and run id are lost
       (AC18).

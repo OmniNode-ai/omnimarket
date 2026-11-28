@@ -42,6 +42,9 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_harness_backe
     HarnessExitCause,
     ModelHarnessRunReceipt,
 )
+from omnimarket.protocols.protocol_local_rung_dispatch import (
+    ProtocolLocalRungDispatch,
+)
 from omnimarket.protocols.protocol_overlay_document import ProtocolOverlayDocument
 from omnimarket.protocols.protocol_process_environment import (
     ProtocolProcessEnvironment,
@@ -155,7 +158,9 @@ class HandlerHarnessProcessRunner:
         agents: Mapping[str, Mapping[str, Any]],
         codex: HandlerCodexHarnessAttempt | None = None,
         settings: ProtocolOverlayDocument | None = None,
+        local_rung: ProtocolLocalRungDispatch | None = None,
     ) -> None:
+        self._local_rung = local_rung
         self._settings = settings
         self._environment = environment
         self._agents = agents
@@ -171,6 +176,8 @@ class HandlerHarnessProcessRunner:
         started = time.monotonic()
         if harness is EnumDelegationHarness.CODEX:
             return await self._run_codex(backend, prompt, timeout_seconds)
+        if harness is EnumDelegationHarness.LAB_AGENT:
+            return await self._run_lab_agent(backend, prompt, timeout_seconds)
         if harness not in (
             EnumDelegationHarness.CLAUDE_GLM,
             EnumDelegationHarness.CLAUDE,
@@ -179,6 +186,21 @@ class HandlerHarnessProcessRunner:
                 wall_seconds=time.monotonic() - started, exit_cause="launch_failed"
             )
         return await self._run_claude(backend, prompt, timeout_seconds)
+
+    async def _run_lab_agent(
+        self, backend: ModelDelegationBackendConfig, prompt: str, timeout_seconds: float
+    ) -> ModelHarnessRunReceipt:
+        """The local least-busy model, run by the plain local rung: no routing is repeated here (OMN-19998)."""
+        if self._local_rung is None:
+            return ModelHarnessRunReceipt(
+                wall_seconds=0.0,
+                exit_cause="launch_failed",
+                detail="no local rung is bound for the lab-agent harness",
+            )
+        task_type = backend.capabilities[0] if backend.capabilities else "document"
+        return await self._local_rung.dispatch(
+            prompt=prompt, task_type=task_type, timeout_seconds=timeout_seconds
+        )
 
     async def _run_codex(
         self, backend: ModelDelegationBackendConfig, prompt: str, timeout_seconds: float

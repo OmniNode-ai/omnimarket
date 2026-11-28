@@ -56,7 +56,7 @@ banner:
     - {key: /config, text: "providers, keys and models"}
     - {key: /model, text: pick the model to use first}
     - {key: /delegation, text: Claude Code on or off}
-    - {key: /, text: "every command   ·   ↑↓ history   ·   ctrl+c quit"}
+    - {key: /, text: "the commands   ·   ↑↓ history   ·   ctrl+c quit"}
 
 # Shortcuts are the TUI's own commands; customer_commands below picks what / lists.
 shortcuts:
