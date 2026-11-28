@@ -14,17 +14,30 @@ ROOT = Path(__file__).parents[2]
 CORPUS = ROOT / "src/omnimarket/configs/work_contracts"
 
 
+def control_environment():
+    """Child environment of a control: the checkout under test, not the host's dispatch venv.
+
+    The omnimarket drift guard compares the interpreter's install with the canonical clone on a lab
+    host and refuses a checkout venv, so a control that runs `onex node` (a frozen test's CLI binding)
+    failed on every host with a clone while passing elsewhere. The checkout is the subject here, so that
+    comparison is not; the frozen test, its pin and the evaluator are unchanged.
+    """
+    env = {
+        k: v for k, v in os.environ.items() if k not in {"PYTHONPATH", "PYTEST_ADDOPTS"}
+    }
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["PYTHONPATH"] = str(ROOT / "src")
+    env["ONEX_ALLOW_OMNIMARKET_DRIFT"] = "1"
+    return env
+
+
 def run_control(contract, answer):
     if contract.acceptance.kind == "schema":
         return evaluate_schema(contract.acceptance.spec, answer.read_text())
     argv = prepare_check(contract, ROOT, answer)
     # The current project's locked interpreter is the lab binding, not a model-selected executable.
     argv = (sys.executable, *argv[1:])
-    env = {
-        k: v for k, v in os.environ.items() if k not in {"PYTHONPATH", "PYTEST_ADDOPTS"}
-    }
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env["PYTHONPATH"] = str(Path(__file__).parents[2] / "src")
+    env = control_environment()
     try:
         result = subprocess.run(
             argv,

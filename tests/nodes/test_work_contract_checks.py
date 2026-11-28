@@ -51,6 +51,18 @@ def test_controls_and_evaluator_immutability(contract):
     )
 
 
+def test_control_child_environment_is_hermetic_about_host_drift(monkeypatch):
+    """A control's child `onex` runs the checkout under test, not the host's canonical dispatch venv."""
+    from tests.nodes.work_contract_support import control_environment
+
+    monkeypatch.delenv("ONEX_ALLOW_OMNIMARKET_DRIFT", raising=False)
+    monkeypatch.setenv("PYTHONPATH", "/elsewhere")
+    env = control_environment()
+    assert env["ONEX_ALLOW_OMNIMARKET_DRIFT"] == "1"
+    assert env["PYTHONPATH"] == str(ROOT / "src")
+    assert "PYTEST_ADDOPTS" not in env
+
+
 def test_controls_and_evaluator_immutability_tampering(tmp_path):
     import shutil
 
