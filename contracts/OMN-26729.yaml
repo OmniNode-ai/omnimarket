@@ -60,6 +60,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_dod_verify/test_omn26729_receipts_under_verifier_state_root.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26729-known-good-known-bad
+  description: The known good (a matching receipt clears the skipped item) and the known bad (a receipt for another revision, or one reading failed, leaves it refused) hold on the hosted runner, the same pair the lab integration proof runs.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dod_verify/test_local_done_gate_receipt.py -q --no-cov -n 0 -p no:randomly -k "test_matching_receipt_clears_the_skipped_item or test_receipt_for_another_revision_refuses or test_receipt_that_reads_failed_refuses"
+    cwd: .
 - id: dod-omn26729-integration-proof
   description: On a lab host, with the branch checked out at its pushed sha, the receipt tests run with a known good (a matching receipt clears the item) and a known bad (a receipt for another revision leaves it refused). Hosted CI holds no lab host, so only the local Done gate runs this check; its receipt is the lab receipt AC3 names.
   source: manual
