@@ -572,6 +572,7 @@ node_cross_repo_order_gate_compute = "omnimarket.nodes.node_cross_repo_order_gat
 node_customer_path_container_test_effect = "omnimarket.nodes.node_customer_path_container_test_effect"
 node_daily_line_compute = "omnimarket.nodes.node_daily_line_compute"
 node_daily_line_effect = "omnimarket.nodes.node_daily_line_effect"
+node_daily_line_scheduled_effect = "omnimarket.nodes.node_daily_line_scheduled_effect"
 node_dashboard_sweep = "omnimarket.nodes.node_dashboard_sweep"
 node_data_flow_sweep = "omnimarket.nodes.node_data_flow_sweep"
 node_data_verification = "omnimarket.nodes.node_data_verification"
