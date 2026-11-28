@@ -703,6 +703,11 @@ class ModelDodVerifyState(BaseModel):
     local_done_gate_receipt: ModelLocalDoneGateReceipt | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # OMN-26725: a local_done_gate run over a ticket with several governing
+    # contracts has no single revision, so it carries one receipt per contract.
+    local_done_gate_receipts: tuple[ModelLocalDoneGateReceipt, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
     # OMN-21676: True when the contract records criteria and this hosted run left
     # their comparison with the live ticket to the trusted pre-merge check
     # (node_dod_criteria_check_effect) and the local Done gate. A delegated verdict

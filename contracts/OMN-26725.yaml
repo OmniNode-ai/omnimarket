@@ -76,3 +76,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_26725_env_prefixed_uv_check_is_hermetic.py -q -n 0 --no-cov -p no:cacheprovider"
         cwd: "."
+  - id: "dod-omn26725-multi-contract-local-receipts"
+    description: "A local_done_gate run over a ticket governed by two contracts (omnibase_infra and omnimarket, as OMN-26118 is) writes one receipt per contract, each at that contract's merge commit with its items under their unprefixed ids, and the hosted gate counts each skipped item verified from its own contract's receipt; before the change the run's aggregate subject was unbound and no receipt was written."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_26725_multi_contract_local_receipts.py -q -n 0 --no-cov -p no:cacheprovider"
+        cwd: "."

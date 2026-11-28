@@ -2465,6 +2465,13 @@ class EvidenceCollector:
         self.acceptance_summary: ModelDodAcceptanceSummary | None = None
         # OMN-20696: subject of the contract loaded for the current verdict.
         self.contract_subject: ModelDodContractSubject | None = None
+        # OMN-26725: one (subject, results) pair per governing contract of a
+        # multi-contract ticket, results under their own unprefixed item ids.
+        # Empty for any other run: the aggregate subject of a multi-contract
+        # run is UNBOUND, so a receipt is built per contract from these.
+        self.contract_groups: list[
+            tuple[ModelDodContractSubject, list[ModelEvidenceCheckResult]]
+        ] = []
         # OMN-20945: why the last ``_load_yaml`` returned None (file, line, key
         # for a duplicate mapping key); read when reporting a contract that
         # failed to parse.
@@ -2634,6 +2641,9 @@ class EvidenceCollector:
         governing = sorted(resolved, key=lambda engaged: engaged.pr.repo)
         multi = len(governing) > 1
         results: list[ModelEvidenceCheckResult] = []
+        groups: list[
+            tuple[ModelDodContractSubject, list[ModelEvidenceCheckResult]]
+        ] = []
         summaries: list[ModelDodAcceptanceSummary] = []
         subjects: list[ModelDodContractSubject] = []
         # OMN-20886: each contract's collection resets the criteria pins, so the
@@ -2661,6 +2671,8 @@ class EvidenceCollector:
                 ),
             )
             name = pr.repo.split("/", 1)[-1]
+            if self.contract_subject is not None:
+                groups.append((self.contract_subject, list(item_results)))
             if self._criteria_pins is not None:
                 pin_parts.append((name, self._criteria_pins))
                 if first_criteria_read is None:
@@ -2693,6 +2705,7 @@ class EvidenceCollector:
             self.acceptance_summary = _merge_acceptance_summaries(summaries)
             self._criteria_pins = merge_criteria_pins(pin_parts)
             self._criteria_read_before = first_criteria_read if pin_parts else None
+            self.contract_groups = groups
         elif subjects:
             self.contract_subject = subjects[0]
         self._durable_gate_inputs = ModelDurableEvidenceGateRunCommand(
@@ -2753,6 +2766,7 @@ class EvidenceCollector:
         """
         self.acceptance_summary = None
         self.contract_subject = None
+        self.contract_groups = []
         self.contract_load_error = None
         self.criteria_check = None
         self._criteria_pins = None
