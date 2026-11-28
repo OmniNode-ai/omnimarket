@@ -61,6 +61,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn25958-ac3-gate-lists-no-changelog
+  description: 'AC3: the release-cut gate (_RELEASE_CUT_PATHS in the ticket-contract prerequisite handler), which the release train reads to choose where release notes go, lists no CHANGELOG.md, so the next cut writes none; test_release_cut_gate_does_not_list_changelog fails at dev fb7dff0b, where the gate lists it and release 0.4.330 re-added the file.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_release_cut_gate_lists_no_changelog_omn25958.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn25958-integration-proof
   description: 'Run the focused release-cut gate test file of this change on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.'
   source: manual
@@ -74,5 +83,6 @@ dod_evidence:
       env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
       tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py
       tests/ci/test_repository_prose_removed_omn17427.py
+      tests/ci/test_release_cut_gate_lists_no_changelog_omn25958.py
       -q -n 0 --no-cov --refuse-skips
     cwd: .
