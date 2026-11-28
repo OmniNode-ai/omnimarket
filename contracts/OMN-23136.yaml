@@ -7,6 +7,26 @@ is_seam_ticket: false
 interface_change: true
 interfaces_touched:
   - public_api
+context:
+  ac_binding_provenance:
+    "dod-001":
+      - label: "AC1"
+        criterion_hash: "0aaf06ef6e45947b91d33cfb99b83858bcfa699500508de3296b37c361f1b2d1"
+        proposed_by: "lane=dod-closeout-bind-2026-11-28T1345Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-11-28T1345Z-c1"
+        accepted_at: "2026-11-28T14:15:01Z"
+    "dod-002":
+      - label: "AC2"
+        criterion_hash: "a59dba42eea55a730654bea0eabdf0d5df01246a613759f131f469ccc1297a8b"
+        proposed_by: "lane=dod-closeout-bind-2026-11-28T1345Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-11-28T1345Z-c1"
+        accepted_at: "2026-11-28T14:15:01Z"
+    "dod-003":
+      - label: "AC3"
+        criterion_hash: "4afbcbd28bd778a69e90169de4d993d2bb5347a442803514edc2b824e2ca7ba5"
+        proposed_by: "lane=dod-closeout-bind-2026-11-28T1345Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-11-28T1345Z-c1"
+        accepted_at: "2026-11-28T14:15:01Z"
 requirements:
   - id: req-omn23136-ac1
     statement: 'the corrected counts are frozen in a baseline file with a hash and the gate reads that file'
@@ -80,7 +100,7 @@ dod_evidence:
           printf 'dependency gate source readback matched %s\n' "$revision"
         cwd: "."
       - check_type: "test_passes"
-        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_network_graph_compute/test_registration.py -q --no-cov --tb=line'
+        check_value: 'uv run pytest tests/nodes/node_network_graph_compute/test_registration.py -q --no-cov --tb=line'
         cwd: "."
   - id: "dod-omn23136-integration-proof"
     description: "The pushed head ran the baseline, gate and reading row tests from the node's own path, and the existing tests of both nodes, on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
