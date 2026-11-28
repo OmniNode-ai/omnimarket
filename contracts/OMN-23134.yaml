@@ -33,7 +33,7 @@ dod_evidence:
       - AC1
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_repository_names.py -q -n 0 --no-cov
+        check_value: uv run pytest tests/nodes/node_floor_compare_effect/test_repository_names.py -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn23134-ac2-served-rows-once
     description: >-
@@ -43,7 +43,7 @@ dod_evidence:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_repository_names.py -q -n 0 --no-cov -k "served or golden"
+        check_value: uv run pytest tests/nodes/node_floor_compare_effect/test_repository_names.py -q -n 0 --no-cov -k "served or golden"
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-deploy-omn23134-compare-node
     description: >-
@@ -54,7 +54,7 @@ dod_evidence:
         check_value: "gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_floor_compare_effect/handlers/adapter_repository_names.py?ref=4c4c8201c91331727f1071d313c3957b110ff84d' --jq .content | base64 -d | grep 'def canonical_snapshots' >/dev/null"
         cwd: "."
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_floor_compare_effect -q -n 0 --no-cov
+        check_value: uv run pytest tests/nodes/node_floor_compare_effect -q -n 0 --no-cov
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac: []
   - id: dod-omn23134-integration-proof
@@ -67,3 +67,20 @@ dod_evidence:
         check_value: |-
           uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane compare-dupes-1215 -- uv run --frozen pytest tests/nodes/node_floor_compare_effect/test_repository_names.py -q -n 0 --no-cov
         cwd: .
+  - id: dod-omn23134-ac1-accepted-20261128t1145z
+    description: >-
+      AC1: the repository names tests read recorded rows naming an underscore and a hyphen spelling of one repository, and the old and new name of one renamed repository, as one row each under the registry's canonical name, with the overlay that maps nothing as the failing control. With the product change of omnimarket#5461 reverted on dev the module fails at collection.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_floor_compare_effect/test_repository_names.py -q -n 0 --no-cov
+        cwd: .
+context:
+  ac_binding_provenance:
+    dod-omn23134-ac1-accepted-20261128t1145z:
+      - label: AC1
+        criterion_hash: 4c15fc3d96d1a9be7ab8ff8d1e1276d8bd40554309dc7aeb0b1855fc71b16c9e
+        proposed_by: lane=dod-closeout-bind-2026-11-28T1145Z-c3
+        accepted_by: lane=dod-closeout-accept-2026-11-28T1145Z-c3

@@ -153,6 +153,12 @@ BRIEF_INSTRUCTIONS: Final[dict[EnumLandingBriefClass, str]] = {
         "the source; draft code through the code delegation step and text through "
         "the landing text step."
     ),
+    EnumLandingBriefClass.PROOF: (
+        "This head is green and clean but no Lab line names it: the newest Lab line "
+        "names an older head, or there is none. Install this exact head where it runs, "
+        "read one real run, and put that reading on the Lab line of a PR comment that "
+        "starts `Lab: head=<full head sha>`. Do not merge, arm or push."
+    ),
     EnumLandingBriefClass.CAUSE_DIAGNOSIS: (
         "Earlier attempts at this shared cause failed; they are listed in "
         "prior_attempts. Do not repeat them. In a detached worktree of the source "

@@ -194,6 +194,24 @@ class InMemoryWorkLedgerQueryReader:
             and (not term or term.casefold() in r.raw_row.casefold())
         )
 
+    def read_rows_projected_since(
+        self,
+        *,
+        after: datetime,
+        since: datetime | None,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+        term: str | None = None,
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        return tuple(
+            r
+            for r in self.read_rows_matching(
+                since=since, until=until, kinds=kinds, contains=contains, term=term
+            )
+            if r.projected_at is not None and r.projected_at >= after
+        )
+
     def read_latest_page(
         self, *, query: ModelWorkLedgerLatestQuery
     ) -> ModelWorkLedgerLatestPage:

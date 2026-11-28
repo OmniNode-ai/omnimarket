@@ -1,0 +1,68 @@
+schema_version: "1.0.0"
+ticket_id: OMN-26728
+title: "Each of the eight delegation tiers completes one real lane task with a receipt naming its harness and model"
+summary: >
+  Eight tiers drafted sections of one real pull request body on host h051 on 2026-11-28; seven returned a receipt
+  with outcome done, the Codex tier was refused with the typed HarnessPlacementRefused. Each output has a recorded
+  used, edited or refused verdict.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26728-eight-tier-receipts"
+    statement: "Each delegation tier returns a receipt for one real lane task, and each output has a verdict."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: one real lane task is sent through each of the eight tiers and each returns a receipt naming the harness, the model, the effort and the outcome -- falsifier: the lane report lists fewer than eight receipts or a receipt without a harness and model"
+      - id: "AC2"
+        statement: "AC2: each receipt's output was used or edited, and the report says which -- falsifier: a receipt with no used or edited verdict"
+      - id: "AC3"
+        statement: "AC3: a tier that fails names its typed refusal and has a ticket or a pull request for the fix -- falsifier: a failed tier with no refusal reason or no fix reference"
+evidence_requirements:
+  - kind: tests
+    description: "The contract test reads the receipts, verdicts and refusal recorded in dod_evidence and refuses a contract missing one."
+    command: uv run --frozen pytest tests/contracts/test_omn26728_tier_receipts.py -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26728-eight-tier-receipts
+    description: >
+      Receipts on h051 (harness, model, effort, outcome, run id): local lab rung, Qwen3.8-27B, effort not set, completed, 43038719-f489-420a-a203-afe9e67a6e57;
+      claude-glm glm-5.3-flash, low, done, 8221d016-3349-4210-8106-d6ff4fccd3ae;
+      claude-glm glm-5.3, low, done, ab01e5af-0103-49df-a7d6-15a67c87ec02;
+      claude-glm glm-5.4, low, done, 69506219-d658-4b08-8c2d-0aa92d891dc3;
+      claude claude-haiku-5-5, harness default, done, 5865f5f0-938a-46db-a3cc-e19ffa49ed3d;
+      claude claude-sonnet-5-5, harness default, done, 687b8f6d-d173-4769-bb3a-b59012226757;
+      claude claude-opus-5-5, harness default, done, ac6b2e76-a216-4ece-92ad-ae59faf5cffa;
+      codex codex-account-default, unavailable, receipt b50056bd-bd8b-48c9-9cec-b79543360910 (refused on h051), with an earlier Codex document run on this host that read done, 3f8a2395-e764-4bf5-a7a2-974f6904a75a.
+    source: manual
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/contracts/test_omn26728_tier_receipts.py::test_eight_tier_receipts_name_harness_model_outcome_and_run -q -n 0 --no-cov -p no:randomly
+        cwd: .
+  - id: dod-omn26728-verdicts
+    description: >
+      Verdicts per output: local edited (reworded the AC claims); GLM small edited (dropped its note about an unread file);
+      GLM medium used; GLM large edited (kept its AC3 paragraph, dropped the repeated lane summary);
+      Claude small edited (corrected its claim that no re-run result existed); Claude medium edited (dropped its closing caveat);
+      Claude large used; Codex refused, no output, not used.
+    source: manual
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/contracts/test_omn26728_tier_receipts.py::test_every_tier_has_a_used_edited_or_refused_verdict -q -n 0 --no-cov -p no:randomly
+        cwd: .
+  - id: dod-omn26728-codex-refusal
+    description: >
+      Codex on h051 refused a document task with the typed refusal HarnessPlacementRefused ("Codex takes reviews and not work",
+      codex_roles); the fix is draft pull request 2099 in the internal plugin repository, which passes the run's lane to task_role. The run with the branch
+      script could not resolve the allowed Codex hosts (receipt 3d3267b8-cb83-43d2-aaf9-879f4f7468f6), so the fix is not proven by this lane.
+    source: manual
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/contracts/test_omn26728_tier_receipts.py::test_failed_tier_names_typed_refusal_and_fix_reference -q -n 0 --no-cov -p no:randomly
+        cwd: .
