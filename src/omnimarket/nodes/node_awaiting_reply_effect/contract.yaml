@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_awaiting_reply_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Sends each AUTO reply of an awaiting-reply run: into the same Slack conversation with
+  the operator's agent footer, or as a Linear comment whose first line is
+  "actor: awaiting-reply (sonnet)". It re-checks the allowlist and the privacy of the
+  conversation, sends to nobody else, appends one SENT-ON-BEHALF row to the operator on the
+  ledger per send, and returns a typed record for every send, refusal and failure. Sends
+  are off unless the request sets dry_run false. The Slack transport is injected: the secret
+  store holds a bot token only, which cannot post as the operator, so with no Slack sender
+  wired a Slack send is a typed refusal.
+input_model:
+  name: ModelAwaitingReplySendRequest
+  module: omnimarket.nodes.node_awaiting_reply_effect.models.model_awaiting_reply_send
+output_model:
+  name: ModelAwaitingReplySendResult
+  module: omnimarket.nodes.node_awaiting_reply_effect.models.model_awaiting_reply_send
+handler:
+  module: omnimarket.nodes.node_awaiting_reply_effect.handlers.handler_awaiting_reply_send
+  class: HandlerAwaitingReplySend
+  input_model: omnimarket.nodes.node_awaiting_reply_effect.models.model_awaiting_reply_send.ModelAwaitingReplySendRequest
+  output_model: omnimarket.nodes.node_awaiting_reply_effect.models.model_awaiting_reply_send.ModelAwaitingReplySendResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_awaiting_reply_effect.handlers.handler_awaiting_reply_send:HandlerAwaitingReplySend
+  handlers:
+    - operation: send_awaiting_replies
+      handler:
+        name: HandlerAwaitingReplySend
+        module: omnimarket.nodes.node_awaiting_reply_effect.handlers.handler_awaiting_reply_send
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+inputs:
+  correlation_id: {type: uuid, required: true}
+  lane: {type: str, required: true}
+  operator_first_name: {type: str, required: true, description: Read from the operator's Slack profile, never typed in.}
+  allowlist: {type: array, required: true}
+  sends: {type: array, required: true, description: Waiting items from the compute node.}
+  dry_run: {type: bool, required: false, description: Defaults to true; nothing is sent.}
+outputs:
+  correlation_id: {type: uuid}
+  dry_run: {type: bool}
+  records: {type: array}
+  sent_count: {type: int}
+  unlogged_count: {type: int}
+  refused_count: {type: int}
+secrets:
+  LINEAR_API_KEY:
+    description: Resolved by the existing ticket gateway for the Linear comment.
+    required: false
+terminal_event: onex.evt.omnimarket.awaiting-reply-sent.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.awaiting-reply-send-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.awaiting-reply-send-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.awaiting-reply-sent.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.awaiting-reply-sent.v1
+# The broker grants the node's two topics need (coverage gate): the runtime login reads the request and writes the answer.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.awaiting-reply-send-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.awaiting-reply-send-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.awaiting-reply-sent.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.awaiting-reply-sent.v1, operation: DESCRIBE}
+metadata:
+  transport_type: inmemory
+  description: Sends AUTO replies of the awaiting-reply check
+  author: OmniNode Team
+  created: "2026-11-20"
+  related_tickets: [OMN-26222]

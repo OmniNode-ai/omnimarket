@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_awaiting_reply_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Decides which asks in Slack and Linear are waiting on the operator and which replies
+  are AUTO (answerable from a recorded ruling or fact, to an allowlisted person) or
+  ESCALATE. Takes the reads as typed items, so a malformed read is refused with the field
+  named and never becomes an empty result. Reads nothing, sends nothing, mutates nothing.
+input_model:
+  name: ModelAwaitingReplyRequest
+  module: omnimarket.models.model_awaiting_reply
+output_model:
+  name: ModelAwaitingReplyResult
+  module: omnimarket.models.model_awaiting_reply
+handler:
+  module: omnimarket.nodes.node_awaiting_reply_compute.handlers.handler_awaiting_reply
+  class: HandlerAwaitingReply
+  input_model: omnimarket.models.model_awaiting_reply.ModelAwaitingReplyRequest
+  output_model: omnimarket.models.model_awaiting_reply.ModelAwaitingReplyResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_awaiting_reply_compute.handlers.handler_awaiting_reply:HandlerAwaitingReply
+  handlers:
+    - operation: decide_awaiting_reply
+      handler:
+        name: HandlerAwaitingReply
+        module: omnimarket.nodes.node_awaiting_reply_compute.handlers.handler_awaiting_reply
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  now: {type: str, required: true, description: Run time, an ISO instant with offset.}
+  window_hours: {type: int, required: false}
+  items: {type: array, required: true, description: Newest message per conversation, typed.}
+  source_reads: {type: array, required: true, description: Read status per source with the positive control.}
+  allowlist: {type: array, required: false, description: Derived each run; empty means all ESCALATE.}
+  ladder_rows: {type: array, required: false, description: ESCALATION rows already on the ledger.}
+  held: {type: array, required: false, description: Replies a prior run held.}
+outputs:
+  status: {type: str, enum: [decided]}
+  sources: {type: array}
+  waiting: {type: array}
+  excluded: {type: array}
+  held: {type: array}
+  auto_count: {type: int}
+  escalate_count: {type: int}
+  allowlist_size: {type: int}
+terminal_event: onex.evt.omnimarket.awaiting-reply-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.awaiting-reply-decide-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.awaiting-reply-decide-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.awaiting-reply-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.awaiting-reply-decided.v1
+# The broker grants the node's two topics need (coverage gate): the runtime login reads the request and writes the answer.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.awaiting-reply-decide-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.awaiting-reply-decide-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.awaiting-reply-decided.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.awaiting-reply-decided.v1, operation: DESCRIBE}
+metadata:
+  transport_type: inmemory
+  description: Awaiting-reply classification of Slack and Linear asks
+  author: OmniNode Team
+  created: "2026-11-20"
+  related_tickets: [OMN-26222]
