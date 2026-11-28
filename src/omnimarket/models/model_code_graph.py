@@ -161,6 +161,8 @@ class ModelCodeGraphResult(BaseModel):
     reasons: tuple[str, ...] = Field(min_length=1)
     fault: EnumGraphFault = EnumGraphFault.NONE
     repos: tuple[ModelRepoGraph, ...] = ()
+    #: Listed repositories this host holds no clone of; ``repos`` counts only the ones it read.
+    skipped: tuple[str, ...] = ()
     sample: ModelSampleOutcome | None = None
     row_key: str | None = None
     #: ``written``, ``already-written``, ``not-written`` (a probe) or ``append-failed:<why>``.

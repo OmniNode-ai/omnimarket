@@ -19,6 +19,10 @@ class RepoSourceError(RuntimeError):
     """A repository or ref could not be read. Never an empty answer."""
 
 
+class RepoNotClonedError(RepoSourceError):
+    """The host holds no clone of the repository: absent here, which is not an unreadable clone."""
+
+
 class ProtocolRepoSource(Protocol):
     """Read the files the graph wants from one repository at one ref."""
 
@@ -82,5 +86,6 @@ __all__ = [
     "ProtocolPullRequestSource",
     "ProtocolRepoSource",
     "PullRequestSourceError",
+    "RepoNotClonedError",
     "RepoSourceError",
 ]

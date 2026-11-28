@@ -16,7 +16,10 @@ from pathlib import Path
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.models.model_code_graph import ModelRepoSnapshot
-from omnimarket.nodes.node_code_graph_effect.protocols import RepoSourceError
+from omnimarket.nodes.node_code_graph_effect.protocols import (
+    RepoNotClonedError,
+    RepoSourceError,
+)
 
 
 class InMemoryRepoSource:
@@ -89,7 +92,7 @@ class GitRepoSource:
     ) -> ModelRepoSnapshot:
         clone = self._root / repo
         if not (clone / ".git").exists():
-            raise RepoSourceError(f"no-clone:{repo}")
+            raise RepoNotClonedError(f"no-clone:{repo}")
         head = (
             self._git(clone, "rev-parse", "--verify", f"{ref}^{{commit}}")
             .decode()
