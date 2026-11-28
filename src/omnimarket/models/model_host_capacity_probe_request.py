@@ -9,6 +9,7 @@ the other's models, so it lives here.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -32,6 +33,8 @@ class ModelHostCapacityProbeRequest(BaseModel):
     running_units: int = Field(default=0, ge=0)
     max_units: int = Field(default=1, ge=1, le=64)
     rank_penalty: float = Field(default=0.0, ge=0.0, le=10.0)
+    draining_until: datetime | None = None
+    running_lanes: list[str] | None = Field(default=None, max_length=256)
 
     @field_validator("host_name")
     @classmethod

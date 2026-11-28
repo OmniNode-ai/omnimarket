@@ -208,9 +208,12 @@ class RemoteLaneStartOrchestrator:
         stop_requested: Callable[[], bool] = lambda: False,
         requesting_host: str = "leader",
         host_availability: HostAvailability | None = None,
+        draining_hosts: Callable[[], tuple[str, ...]] | None = None,
     ) -> None:
         self._s = settings
         self._availability = host_availability
+        self._draining_hosts = draining_hosts
+        self._drain_read_error = ""
         self._pool = host_pool
         self._ledger = ledger
         self._reader = ledger_reader
@@ -265,6 +268,48 @@ class RemoteLaneStartOrchestrator:
     def _say(self, line: str) -> None:
         self._lines.append(line)
         self._echo(line)
+
+    def _read_draining(self) -> tuple[str, ...] | None:
+        """The drain state at read time: the draining hosts, or ``None`` when the reader raises.
+
+        A drain state that cannot be read is not an empty one: the start must not be placed or
+        started as if no host were draining (OMN-24489); ``()`` when no reader is wired. The
+        reader's error stands in ``_drain_read_error`` for the line that refuses the start.
+        """
+        if self._draining_hosts is None:
+            return ()
+        try:
+            return tuple(self._draining_hosts())
+        except (OSError, ValueError) as exc:
+            self._drain_read_error = str(exc)
+            return None
+
+    def _recheck_draining(
+        self, request: ModelRemoteLaneStartRequest
+    ) -> tuple[str, ...] | None:
+        """The drain state just before the engine starts: the caller's reader, else a fresh pool read.
+
+        The pool snapshot is built from the hosts' capacity advertisements, which carry each host's drain mark, so a fresh
+        read shows a host that started draining after the placement. ``None`` when the pool cannot be read.
+        """
+        if self._draining_hosts is not None:
+            return self._read_draining()
+        try:
+            snapshot = self._pool.read_pool(
+                ModelLaneHostPoolRequest(
+                    engine=f"{request.engine}_{request.model}",
+                    pinned_host=request.pinned_host,
+                    lane=request.lane,
+                )
+            )
+        except (LaneHostPoolUnreadableError, OSError, ValueError) as exc:
+            self._drain_read_error = str(exc)
+            return None
+        return tuple(
+            r.name
+            for r in snapshot.readings
+            if (r.lane_admission_refusal or "").startswith("draining")
+        )
 
     def _stamp(self) -> str:
         return self._clock().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -610,6 +655,15 @@ class RemoteLaneStartOrchestrator:
             )
             receipt.state = EnumRemoteLaneStartOutcome.NO_HOST.value
             return self._result(EnumRemoteLaneStartOutcome.NO_HOST, receipt)
+        draining = self._read_draining()
+        if draining is None:
+            # A drain state that cannot be read is not an empty one: the start is refused,
+            # never placed as if no host were draining (OMN-24489).
+            self._say(
+                f"REMOTE-LANE-NO-HOST lane={request.lane} engine={host_engine} outcome=drain-state-unreadable: {self._drain_read_error}"
+            )
+            receipt.state = EnumRemoteLaneStartOutcome.NO_HOST.value
+            return self._result(EnumRemoteLaneStartOutcome.NO_HOST, receipt)
         decision = self._placement.handle(
             ModelRemoteLanePlacementRequest(
                 engine=host_engine,
@@ -618,6 +672,7 @@ class RemoteLaneStartOrchestrator:
                 limited_hosts=snapshot.limited_hosts,
                 codex_limited_hosts=snapshot.codex_limited_hosts,
                 auth_expired_hosts=snapshot.auth_expired_hosts,
+                draining_hosts=draining,
                 readings=tuple(
                     ModelRemoteLaneHostReading.model_validate(
                         {
@@ -745,6 +800,30 @@ class RemoteLaneStartOrchestrator:
                 claim_row,
                 engine_rc=1,
                 message=f"provisioning failed at {fatal.step}: {why}",
+                outcome=EnumRemoteLaneStartOutcome.START_FAILED,
+            )
+
+        # The drain state can change after the placement stood: a host can start draining while the
+        # CLAIM row was written and the engine steps ran, so the state is re-read before the engine
+        # starts, and the start ends as a provisioning failure does when the placed host is draining
+        # or the state cannot be read (OMN-24489).
+        draining = self._recheck_draining(request)
+        if draining is None or host_ref.name in draining:
+            outcome_word = (
+                "drain-state-unreadable" if draining is None else "host-draining"
+            )
+            recheck = (
+                f"REMOTE-LANE-DRAIN-RECHECK lane={request.lane} host={host_ref.name} "
+                f"outcome={outcome_word}: no engine was started"
+            )
+            self._say(recheck)
+            return self._close_lane(
+                request,
+                receipt,
+                host_ref,
+                claim_row,
+                engine_rc=1,
+                message=recheck,
                 outcome=EnumRemoteLaneStartOutcome.START_FAILED,
             )
 

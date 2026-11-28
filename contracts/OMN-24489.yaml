@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-24489
+title: "A host can be drained on a timer: lane placement and lab fill skip it and a status line says when it is empty"
+summary: "The host drain node gains a time-bounded mark and a status line that says whether the host is safe to power down. The remote-lane placement node and the lab fill fallback host refuse a draining host; an unreadable drain state is never read as no host draining."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24489-host-drain-timer
+  statement: "A lab host can be taken out of placement on purpose, for a bounded time, and the operator can read when it is empty."
+  acceptance:
+  - id: AC1
+    statement: "AC1: a drain mark carries an expiry and a mark past its expiry reads as not draining -- falsifier: uv run --frozen pytest tests/unit/nodes/node_host_drain_effect/test_drain_expiry.py -q --no-cov -n 0 -p no:randomly"
+  - id: AC2
+    statement: "AC2: the status result names lanes still running and whether the host is safe to power down, and an unreadable lane count is never safe -- falsifier: uv run --frozen pytest tests/unit/nodes/node_host_drain_effect/test_drain_status_safe.py -q --no-cov -n 0 -p no:randomly"
+  - id: AC3
+    statement: "AC3: the remote-lane placement node refuses a draining host with the reason draining and places on another -- falsifier: uv run --frozen pytest tests/unit/nodes/node_remote_lane_compute/test_placement_draining.py -q --no-cov -n 0 -p no:randomly"
+  - id: AC4
+    statement: "AC4: the lab fill fallback host skips a draining host -- falsifier: uv run --frozen pytest tests/unit/nodes/node_lab_fill_effect/test_fallback_host_draining.py -q --no-cov -n 0 -p no:randomly"
+  - id: AC5
+    statement: "AC5: integrated: on a lab host with the drain overlay installed, drain with a short time limit, a lane placement skips the host, status reads the lane count, and after the limit placement takes the host again -- falsifier: the status line and the placement refusal read on the running host (recorded in the Lab line and a pull request comment)"
+evidence_requirements:
+- kind: tests
+  description: The drain, placement and fallback tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_host_drain_effect tests/unit/nodes/node_remote_lane_compute tests/unit/nodes/node_lab_fill_effect/test_fallback_host_draining.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24489-ac1
+  description: "A drain mark carries an expiry and a mark past its expiry reads as not draining"
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_drain_effect/test_drain_expiry.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24489-ac2
+  description: "The status result names lanes still running and whether the host is safe to power down, and an unreadable lane count is never safe"
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_drain_effect/test_drain_status_safe.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24489-ac3
+  description: "The remote-lane placement node refuses a draining host with the reason draining and places on another"
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_remote_lane_compute/test_placement_draining.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24489-ac4
+  description: "The lab fill fallback host skips a draining host"
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_lab_fill_effect/test_fallback_host_draining.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24489-ac5
+  description: "The tests behind the integrated reading pass; the host, revision and the drain, placement refusal and expiry readings are recorded in the Lab line and a pull request comment."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_drain_effect tests/unit/nodes/node_remote_lane_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24489-integration-proof
+  description: Run the drain, placement and fallback tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24489 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_host_drain_effect tests/unit/nodes/node_remote_lane_compute tests/unit/nodes/node_lab_fill_effect/test_fallback_host_draining.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

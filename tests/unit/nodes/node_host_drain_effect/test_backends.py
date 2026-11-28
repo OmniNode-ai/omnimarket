@@ -13,7 +13,6 @@ import yaml
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
-    CommandLaneSource,
     CommandWorkerStopper,
 )
 from omnimarket.nodes.node_host_drain_effect.overlay import (
@@ -38,12 +37,18 @@ def test_overlay_with_a_missing_key_refuses_the_load(tmp_path: Path) -> None:
 
 def test_overlay_loads_from_a_root_and_picks_the_profile(tmp_path: Path) -> None:
     document = yaml.safe_load(EXAMPLE_OVERLAY.read_text(encoding="utf-8"))
-    document["profile"] = "jsonl"
+    document["profile"] = "bus"
+    document["bus"] = {
+        "kind": "inmemory",
+        "window_seconds": 22,
+        "cache_seconds": 5,
+        "timeout_seconds": 30,
+    }
     node_dir = tmp_path / NODE_NAME
     node_dir.mkdir()
     (node_dir / "overlay.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
     loaded = load_overlay({"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)})
-    assert loaded.profile == "jsonl"
+    assert loaded.profile == "bus"
 
 
 def test_overlay_refuses_the_removed_redpanda_profile() -> None:
@@ -87,11 +92,7 @@ def test_command_stopper_runs_the_overlay_argv_with_the_unit(
     assert failing.stop("not-a-runner") is False
 
 
-def test_command_lane_source_reads_the_integer_the_command_prints(
-    overlay: ModelHostDrainOverlay,
-) -> None:
-    lanes = CommandLaneSource(overlay.lanes, run=lambda *_a, **_k: _done(0, "3\n"))
-    assert lanes.running("example-host-a") == 3
+# CommandLaneSource and the receipts test are gone: the lane count is now the advertisement's.
 
 
 def test_command_probe_reads_busy_idle_and_unknown_from_the_argv_output(

@@ -4,8 +4,8 @@
 
 Found at ``<root>/node_host_drain_effect/overlay.yaml`` under a root named in ``ONEX_SKILL_OVERLAY_ROOTS``. The package
 ships ``overlay.example.yaml`` with synthetic values. Nothing here has a default: an absent key refuses the load and
-names it. ``profile`` picks the backend: ``in_memory`` (the default a test and a first run use), ``jsonl`` (a durable
-file on one host).
+names it. ``profile`` picks the backend: ``in_memory`` (the default a test and a first run use), ``bus`` (the drain mark
+and the host's running lanes and units ride the capacity advertisements on the bus: no file, no machine-local state).
 """
 
 from __future__ import annotations
@@ -18,6 +18,9 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
+    EnumHostReadKind,
+)
 
 NODE_NAME = "node_host_drain_effect"
 EXAMPLE_OVERLAY = Path(__file__).with_name("overlay.example.yaml")
@@ -35,6 +38,8 @@ class ModelDrainCodes(_Frozen):
     readback_failed: str = Field(min_length=1)
     #: The drain store raised while writing the state: the write is not known to have happened.
     write_failed: str = Field(min_length=1)
+    #: The ttl the command asked for is above the longest the overlay allows: no mark is written.
+    ttl_invalid: str = Field(min_length=1)
 
 
 class ModelRunnerStopCodes(_Frozen):
@@ -55,9 +60,22 @@ class ModelDrainSettings(_Frozen):
     chain_node: str = Field(min_length=1)
     #: The hosts a drain command may name; any other host is refused with a typed failure.
     hosts: tuple[str, ...] = Field(min_length=1)
+    #: Said in every status line beside the lane count: where the count is read from, so a count read on one machine is
+    #: never taken for the whole lab.
+    lane_count_scope: str = Field(min_length=1)
+    #: How long a drain mark lasts when the command names no ttl, in seconds: a mark is time-bounded.
+    default_ttl_seconds: int = Field(ge=1)
+    #: The longest ttl a drain command may ask for, in seconds; above it the drain is refused.
+    max_ttl_seconds: int = Field(ge=1)
     codes: ModelDrainCodes
     #: The named break that makes this reading go red, used by the failing control.
     injected_fault: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _default_ttl_is_not_above_the_max(self) -> ModelDrainSettings:
+        if self.default_ttl_seconds > self.max_ttl_seconds:
+            raise ValueError("default_ttl_seconds must not be above max_ttl_seconds")
+        return self
 
 
 class ModelRunnerRow(_Frozen):
@@ -112,10 +130,54 @@ class ModelRunnerStopSettings(_Frozen):
         return self
 
 
-class ModelLaneCountSettings(_Frozen):
-    #: argv that prints the count of lanes running on {host} as one integer. No shell.
-    count_command: tuple[str, ...] = Field(min_length=1)
+class ModelDrainBusSettings(_Frozen):
+    """How the verb reaches the bus the hosts advertise on (the profile ``bus``)."""
+
+    #: kafka: the lane's broker; inmemory: a bus inside this process (a drill).
+    kind: Literal["kafka", "inmemory"]
+    #: The bus lane (the lab's dev lane, a CI lane); named for kafka, absent for inmemory.
+    lane: str | None = None
+    #: The broker stated directly instead of a lane; absent when the lane names it.
+    kafka_bootstrap: str | None = None
+    #: How long one listening window lasts, in seconds: it must span two advertisement cadences, because SAFE reads each host
+    #: twice.
+    window_seconds: float = Field(gt=0)
+    #: How long a window read stays valid for the next read of the same command, in seconds.
+    cache_seconds: float = Field(ge=0)
+    #: How long a bus call may take before the verb reads the bus as unreachable, in seconds.
+    timeout_seconds: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _kafka_names_a_broker(self) -> ModelDrainBusSettings:
+        if self.kind == "kafka" and (self.lane is None) == (
+            self.kafka_bootstrap is None
+        ):
+            raise ValueError("kafka names exactly one of lane and kafka_bootstrap")
+        if self.kind == "inmemory" and (
+            self.lane is not None or self.kafka_bootstrap is not None
+        ):
+            raise ValueError("the in-memory bus names no lane and no broker")
+        return self
+
+
+class ModelHostReadSettings(_Frozen):
+    """What the host's advertisement does not say is read by an argv the overlay declares: its busy model servers.
+
+    The host's lanes and units are not read here: the host advertises them (see the bus profile).
+
+    ``command`` is an argv that prints the count of ``kind`` busy on ``{host}`` as one integer. No shell.
+    """
+
+    name: str = Field(min_length=1)
+    kind: EnumHostReadKind
+    command: tuple[str, ...] = Field(min_length=1)
     timeout_seconds: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _command_names_the_host(self) -> ModelHostReadSettings:
+        if not any("{host}" in part for part in self.command):
+            raise ValueError("command must name {host}")
+        return self
 
 
 class ModelEmissionSettings(_Frozen):
@@ -126,16 +188,28 @@ class ModelEmissionSettings(_Frozen):
 
 
 class ModelHostDrainOverlay(_Frozen):
-    profile: Literal["in_memory", "jsonl"]
-    #: The jsonl profile's state file, relative to the emission home.
-    jsonl_state_relpath: str = Field(min_length=1)
+    profile: Literal["in_memory", "bus"]
+    #: The bus profile's connection; required for it, absent for in_memory.
+    bus: ModelDrainBusSettings | None = None
     drain: ModelDrainSettings
-    runner_stop: ModelRunnerStopSettings
-    lanes: ModelLaneCountSettings
+    #: Absent: this deployment declares no runner stop; the drain verb alone is deployed and ``runner-stop`` is refused.
+    runner_stop: ModelRunnerStopSettings | None = None
+    #: The reads of the host itself beyond its advertisement; every kind exactly once, names unique.
+    host_reads: tuple[ModelHostReadSettings, ...] = Field(min_length=1)
     emission: ModelEmissionSettings
 
     @model_validator(mode="after")
+    def _bus_profile_names_its_bus(self) -> ModelHostDrainOverlay:
+        if self.profile == "bus" and self.bus is None:
+            raise ValueError("the bus profile declares no bus block")
+        if self.profile == "in_memory" and self.bus is not None:
+            raise ValueError("the in_memory profile declares a bus block")
+        return self
+
+    @model_validator(mode="after")
     def _runner_hosts_are_drainable(self) -> ModelHostDrainOverlay:
+        if self.runner_stop is None:
+            return self
         unknown = sorted(
             {r.host for r in self.runner_stop.runners} - set(self.drain.hosts)
         )
@@ -143,7 +217,28 @@ class ModelHostDrainOverlay(_Frozen):
             raise ValueError(f"runner hosts not in drain.hosts: {unknown}")
         return self
 
+    @model_validator(mode="after")
+    def _host_reads_cover_every_kind_once(self) -> ModelHostDrainOverlay:
+        kinds = [read.kind for read in self.host_reads]
+        missing = sorted(kind for kind in EnumHostReadKind if kind not in kinds)
+        if missing:
+            raise ValueError(
+                f"host_reads declares no read for kind(s): {[k.value for k in missing]}"
+            )
+        twice = sorted({k for k in kinds if kinds.count(k) > 1})
+        if twice:
+            raise ValueError(
+                f"host_reads declares kind(s) twice: {[k.value for k in twice]}"
+            )
+        names = [read.name for read in self.host_reads]
+        if len(names) != len(set(names)):
+            dupes = sorted({n for n in names if names.count(n) > 1})
+            raise ValueError(f"host_reads names are not unique: {dupes}")
+        return self
+
     def runner(self, name: str) -> ModelRunnerRow | None:
+        if self.runner_stop is None:
+            return None
         return next((r for r in self.runner_stop.runners if r.name == name), None)
 
 
