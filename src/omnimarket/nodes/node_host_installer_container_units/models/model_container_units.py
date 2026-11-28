@@ -28,6 +28,8 @@ class ModelContainerCreate(_Frozen):
     volumes: tuple[NonEmptyStr, ...] = ()
     restart_policy: NonEmptyStr
     env_file: NonEmptyStr | None = None
+    # Each entry is passed as ``--security-opt`` (the container's confinement profile and privilege options).
+    security_opts: tuple[NonEmptyStr, ...] = ()
 
 
 class ModelContainerRecreate(_Frozen):
