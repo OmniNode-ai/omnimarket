@@ -102,6 +102,10 @@ from omnimarket.nodes.node_pr_landing_decision_compute.lab_check import (
     SKIP_FOR_VERDICT,
     read_lab_check,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.lab_line_gate import (
+    EnumLabLineVerdict,
+    read_lab_line_gate,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     BLOCKED_OUTCOMES,
     CAUSE_EXCLUDED_SUSPENSIONS,
@@ -1703,6 +1707,15 @@ def _mergeable(p: ModelLandingPrFacts) -> bool:
     return p.merge_queue and p.merge_state is EnumLandingMergeState.BEHIND
 
 
+def _dispatch_proof(t: _Tick, p: ModelLandingPrFacts) -> None:
+    """Dispatch one proof worker for a head no Lab line names, once per head (OMN-26736)."""
+    rec = t.record_of(p.pr)
+    if p.head_sha in rec.proof_heads:
+        return
+    if _try_dispatch(t, p.pr, EnumLandingBriefClass.PROOF, p.head_sha, ()):
+        t.put_record(p.pr, proof_heads=(*rec.proof_heads, p.head_sha))
+
+
 def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
     """Merge pinned to the head; a runtime PR lands only holding the token (R6).
 
@@ -1715,6 +1728,11 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
     reading = read_lab_check(p, t.now, t.facts.policy)
     if reading is not None and reading.verdict is not EnumLabCheckVerdict.PASS:
         t.skips[p.pr] = SKIP_FOR_VERDICT[reading.verdict]
+        return
+    lab_line = read_lab_line_gate(p, t.facts.policy)
+    if lab_line is not None and lab_line.verdict is not EnumLabLineVerdict.PASS:
+        t.skips[p.pr] = EnumLandingLandSkipReason.LAB_LINE_NEEDS_PROOF
+        _dispatch_proof(t, p)
         return
     review = read_review_gate(p, t.facts.policy)
     if review is not None and review.verdict is not EnumReviewGateVerdict.PASS:

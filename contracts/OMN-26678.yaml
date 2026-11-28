@@ -85,13 +85,22 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_omn26678_integration_proof_command.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26678-lab-proof-names-bus-lane
+  description: The lab integration-proof item of this contract names --bus-lane dev, because lab-work run takes its broker from a declared lane and never from the environment. The test fails on a command that omits it; the lab reading that follows carries a known good root (history written and read back) and an unwritable root (refused by name).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_omn26678_integration_proof_command.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26678-integration-proof-lab
   description: On a lab host, with the branch checked out at its pushed sha, the state root test runs the contract-bound handler with a known good root (history written and read back) and an unwritable root (refused by name). Hosted CI holds no lab host, so only the local Done gate runs this unbound check (the lab reading is in the PR's Lab comment). The command starts with uv run, a resolvable executable, where the earlier item started with a bare onex that the verifier host could not resolve.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26678-state-root --kind test -- uv run --frozen pytest tests/nodes/node_build_delegation_checks/test_state_root.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run onex lab-work run --bus-lane dev --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26678-state-root --kind test -- uv run --frozen pytest tests/nodes/node_build_delegation_checks/test_state_root.py -q --no-cov -n 0 -p no:randomly
     cwd: .
   supersedes_ac_binding:
   - item: omnibase_infra:dod-omn26678-retry-sha

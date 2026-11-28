@@ -59,6 +59,31 @@ def _check_name(value: str) -> str:
 
 WorkKind = Literal["test", "build", "lint", "code_draft", "other"]
 
+_ENV_ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.DOTALL)
+
+
+def split_env_prefix(argv: list[str]) -> tuple[dict[str, str], list[str]]:
+    """Split ``env NAME=value ... <command>`` into the assignments and the command.
+
+    Only the plain form is read: ``env``, then zero or more ``NAME=value``
+    words, then the real command. An argv that does not start with ``env`` comes
+    back unchanged with no assignments. An ``env`` option (``-i``, ``-u``, ...)
+    is not an assignment, so it ends up as the first word of the command, which
+    no allowlist holds. The command may be empty (``env`` alone, or only
+    assignments); the caller refuses that.
+    """
+    if not argv or PurePosixPath(argv[0]).name != "env":
+        return {}, list(argv)
+    assignments: dict[str, str] = {}
+    index = 1
+    while index < len(argv):
+        match = _ENV_ASSIGNMENT.match(argv[index])
+        if match is None:
+            break
+        assignments[match.group(1)] = match.group(2)
+        index += 1
+    return assignments, list(argv[index:])
+
 
 class EnumLabWorkUnitStatus(StrEnum):
     """How a unit ended. ``completed`` means the command ran to an exit code,

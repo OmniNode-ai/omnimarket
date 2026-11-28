@@ -109,6 +109,27 @@ class ProtocolWorkLedgerFilteredRowReader(Protocol):
 
 
 @runtime_checkable
+class ProtocolWorkLedgerAppendedRowReader(Protocol):
+    """Read only the rows of a window projected at or after a held read's watermark (OMN-26152).
+
+    The same narrowing as ``read_rows_matching`` (an empty ``kinds`` and a ``None`` ``contains``
+    and ``term`` narrow nothing), in the same row order. Rows projected exactly at ``after`` are
+    returned again, so the caller drops the ones it holds by id.
+    """
+
+    def read_rows_projected_since(
+        self,
+        *,
+        after: datetime,
+        since: datetime | None,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+        term: str | None = None,
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]: ...
+
+
+@runtime_checkable
 class ProtocolWorkLedgerOldestRowReader(Protocol):
     """Name the oldest row of the whole ledger, so a narrowed read with no start keeps its parity window (OMN-23615)."""
 
@@ -396,8 +417,10 @@ class PostgresWorkLedgerQueryReader:
 
     @staticmethod
     def _records(rows: list[tuple[Any, ...]]) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        # model_construct: the rows were validated when they were written, and a validated model
+        # per row of a whole window held the runtime's GIL (OMN-26152).
         return tuple(
-            ModelWorkLedgerRowRecord(
+            ModelWorkLedgerRowRecord.model_construct(
                 row_id=row_id,
                 row_ts=row_ts,
                 row_type=row_type,
@@ -435,11 +458,53 @@ class PostgresWorkLedgerQueryReader:
         term: str | None = None,
     ) -> tuple[ModelWorkLedgerRowRecord, ...]:
         """The window's rows narrowed by row type and a text match, in the store."""
+        return self._read_narrowed(
+            after=None,
+            since=since,
+            until=until,
+            kinds=kinds,
+            contains=contains,
+            term=term,
+        )
+
+    def read_rows_projected_since(
+        self,
+        *,
+        after: datetime,
+        since: datetime | None,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+        term: str | None = None,
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        """The narrowed window's rows projected at or after ``after``: the rows a held read lacks."""
+        return self._read_narrowed(
+            after=after,
+            since=since,
+            until=until,
+            kinds=kinds,
+            contains=contains,
+            term=term,
+        )
+
+    def _read_narrowed(
+        self,
+        *,
+        after: datetime | None,
+        since: datetime | None,
+        until: datetime,
+        kinds: tuple[str, ...],
+        contains: str | None,
+        term: str | None,
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
         clauses = ["row_ts <= %s"]
         params: list[object] = [until]
         if since is not None:
             clauses.insert(0, "row_ts >= %s")
             params.insert(0, since)
+        if after is not None:
+            clauses.append("projected_at >= %s")
+            params.append(after)
         if kinds:
             clauses.append("row_type = ANY(%s)")
             params.append(list(kinds))
@@ -482,8 +547,10 @@ class PostgresWorkLedgerQueryReader:
             "ORDER BY ledger_seq NULLS LAST, row_id",
             (ledger_id, first_seq, last_seq, until),
         )
+        # model_construct: the rows were validated when they were written, and a validated model
+        # per row of a whole window held the runtime's GIL (OMN-26152).
         return tuple(
-            ModelWorkLedgerRowRecord(
+            ModelWorkLedgerRowRecord.model_construct(
                 row_id=row_id,
                 row_ts=row_ts,
                 row_type=row_type,

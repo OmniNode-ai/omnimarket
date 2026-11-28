@@ -1217,12 +1217,11 @@ projection_api:
         - snapshot_grain
         - tenant_id
       tenant_column: tenant_id
-      consumers: none
-      consumers_reason: >-
-        No Omnidash component placed on a shipped dashboard layout and no typed
-        status-page backend reader reads this daily aggregate yet. The change
-        that adds that reader deletes this opt-out and the
-        exposure-reader-coverage gate then checks the reader.
+      # OMN-26623 deleted the `consumers: none` opt-out. omnidash@bb23d514 added
+      # local-page:overview.page.yaml, which reads
+      # onex.snapshot.projection.delegation.daily.v1; the OMN-17199 validator now
+      # resolves a real reader and fails `stale_opt_out` on the opt-out standing
+      # over it.
 
 metadata:
   transport_type: kafka
