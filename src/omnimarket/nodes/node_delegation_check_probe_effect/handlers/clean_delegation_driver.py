@@ -87,10 +87,12 @@ def run(
     env: Mapping[str, str] | None = None,
     cwd: str | None = None,
     timeout: float = 900,
+    stdin: str | None = None,
 ) -> dict[str, Any]:
     try:
         done = subprocess.run(
             argv,
+            input=stdin,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -306,6 +308,62 @@ def declare_model(base_url: str, model: str) -> None:
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def closed_loopback_url() -> str:
+    """A loopback address nothing listens on: bound, read, closed. The local rung declared there is unusable for the run."""
+    with socket.socket() as probe:
+        probe.bind((LOOPBACK, 0))
+        port = probe.getsockname()[1]
+    return f"http://{LOOPBACK}:{port}"
+
+
+def drive_fall_through(args: Mapping[str, Any]) -> dict[str, Any]:
+    """C13 and C14 fall-through leg: the local rungs declared unreachable on the clean profile, one task, the receipt read.
+
+    The key arrives under the declared variable name, goes in through the install's own ``onex secret set`` (value on stdin)
+    and is removed from the delegate's environment, so the delegate reads it the way a customer's does. Nothing but
+    receipt facts is printed.
+    """
+    onex = args["onex"]
+    scratch = Path(tempfile.mkdtemp(prefix="c13-fall-driver-"))
+    work = scratch / "work"
+    work.mkdir()
+    env = dict(os.environ)  # ONEX_FLAG_EXEMPT: the clean machine's own environment
+    env["PATH"] = os.pathsep.join([str(Path(onex).parent), env.get("PATH", "")])
+    key = env.pop(args["key_env"], "")
+    setup = run([onex, "local", "init", "--json"], env=env, cwd=str(work), timeout=300)
+    if setup["rc"] != 0 or not key:
+        return {"rc": -1}
+    declare_model(closed_loopback_url(), "c13-unreachable-local")
+    stored = run(
+        [onex, "secret", "set", args["secret_ref"]],
+        env=env,
+        cwd=str(work),
+        timeout=120,
+        stdin=key,
+    )
+    if stored["rc"] != 0:
+        return {"rc": -1}
+    delegation = run([onex, "delegate", PROMPT, "--json"], env=env, cwd=str(work))
+    runs = sorted(
+        (
+            d
+            for d in (Path.home() / ".onex_state" / "runs").glob("*")
+            if (d / "receipt.json").is_file()
+        ),
+        key=lambda d: d.stat().st_mtime,
+    )
+    observed = read_run(runs[-1]) if runs else {}
+    return {
+        "rc": delegation["rc"] if delegation["rc"] is not None else -1,
+        "receipt_tier": observed.get("receipt_tier"),
+        "receipt_model": observed.get("receipt_model"),
+        "attempt_tiers": observed.get("attempt_tiers", []),
+        "accepted_last": observed.get("accepted_last", False),
+        "escalated": observed.get("escalated", False),
+        "cost_usd": observed.get("cost_usd", 0.0),
+    }
+
+
 def installed_versions(names: Sequence[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for name in names:
@@ -320,7 +378,9 @@ def read_arguments(argv: list[str]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     key: str | None = None
     for token in argv:
-        if token in ("--onex", "--url", "--model"):
+        if token == "--fall-through":
+            out["fall_through"], key = True, None
+        elif token in ("--onex", "--url", "--model", "--key-env", "--secret-ref"):
             key, out[token[2:]] = token[2:], None
         elif token == "--packages":
             key, out["packages"] = "packages", []
@@ -330,6 +390,14 @@ def read_arguments(argv: list[str]) -> dict[str, Any]:
             out[key], key = token, None
         else:
             raise SystemExit(f"unexpected argument: {token}")
+    if out.get("fall_through"):
+        out["key_env"] = out.pop("key-env", None)
+        out["secret_ref"] = out.pop("secret-ref", None)
+        for needed in ("onex", "key_env", "secret_ref"):
+            if not out.get(needed):
+                raise SystemExit(f"--{needed.replace('_', '-')} is required")
+        out.setdefault("packages", [])
+        return out
     for needed in ("onex", "url", "model"):
         if not out.get(needed):
             raise SystemExit(f"--{needed} is required")
@@ -346,6 +414,10 @@ def _read_log(path: Path) -> list[str]:
 
 def drive() -> int:
     args = read_arguments(sys.argv[1:])
+    if args.get("fall_through"):
+        json.dump(drive_fall_through(args), sys.stdout)
+        sys.stdout.flush()
+        return 0
     onex, url, model = args["onex"], args["url"], args["model"]
     record_stream, sys.stdout = sys.stdout, sys.stderr
     scratch = Path(tempfile.mkdtemp(prefix="c13-driver-"))

@@ -339,3 +339,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c13_c14_fall_through_leg.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-fall-through-declared-setting
+  description: The node contract's fall_through block (checks, secret reference, key variable name; the overlay may carry its own) is the declared setting that turns the C13 and C14 leg on; with no checks named, no task is sent. The clean machine hands the key under the declared variable name only, stores it with the install's own secret command, and never prints it.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c13_c14_customer_machine_collector.py tests/unit/models/test_delegation_check_probe_overlay_document_omn26043.py tests/nodes/node_delegation_check_probe_effect/test_c13_c14_fall_through_leg.py -q --no-cov -n 0 -p no:randomly -k "fall_through or declared or setting"
+    cwd: .

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,6 +23,9 @@ import yaml
 from omnimarket.handlers.routing.delegation_check_responder_chain import (
     ModelChainResolution,
     resolve_chain,
+)
+from omnimarket.models.overlay_documents.model_delegation_check_probe_overlay import (
+    ModelFallThroughSettings,
 )
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
     ModelDelegationCheckResponder,
@@ -45,6 +48,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegati
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CAUSE_PRODUCT,
+    CheckId,
     EnumCheckVerdict,
     ModelChainSource,
     ModelCheckPrecondition,
@@ -73,6 +77,17 @@ def contract_topics() -> tuple[str, ...]:
     return tuple(str(t) for t in contract["event_bus"]["publish_topics"])
 
 
+def contract_fall_through() -> ModelFallThroughSettings | None:
+    """The fall-through setting the node's contract declares (OMN-26043); None when the contract declares none."""
+    contract = yaml.safe_load(
+        (Path(__file__).parent.parent / "contract.yaml").read_text(encoding="utf-8")
+    )
+    declared = contract.get("fall_through")
+    return (
+        None if declared is None else ModelFallThroughSettings.model_validate(declared)
+    )
+
+
 def _new_run_id(check_id: str, now: datetime) -> str:
     return f"{check_id.lower()}-{now.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
 
@@ -91,6 +106,7 @@ class HandlerDelegationCheckProbe:
         gateway: ProtocolGatewayClient | None = None,
         gateway_settings: GatewayRunSettings | None = None,
         chain_source: ModelChainSource | None = None,
+        fall_through_checks: Collection[CheckId] = (),
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -104,6 +120,8 @@ class HandlerDelegationCheckProbe:
         self._gateway = gateway
         self._gateway_settings = gateway_settings or GatewayRunSettings()
         self._chain_source = chain_source
+        # The checks the overlay's declared fall_through setting turns the leg on for; none by default.
+        self._fall_through_checks = frozenset(fall_through_checks)
         self._sleep = sleep
         self._monotonic = monotonic
 
@@ -352,7 +370,7 @@ class HandlerDelegationCheckProbe:
                         ),
                     )
                 )
-            if request.check_id in ("C13", "C14"):
+            if request.check_id in self._fall_through_checks:
                 reading = self._fall_through_leg(reading, request)
             reading = self._with_gateway_leg(reading, request)
         return reading.model_copy(update={"versions": self._machine.versions()})

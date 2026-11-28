@@ -80,6 +80,14 @@ gateway_row:
   checks: [C11, C12, C13, C14, C15, C16, C17, C28, C29, C30]
   gateway_only_checks: [C11, C12, C15, C16, C28, C29, C30]
   tenant_source_node: node_dev_proof_tenant_token_effect
+# The chain fall-through leg of C13 and C14 (OMN-26043): the scheduled runs send one more task with the local rung marked unusable for
+# that run only, and read that OpenRouter answered and the attempts were recorded. secret_ref is the secret store reference the OpenRouter
+# tier reads its key through on dev (a reference, never a value); key_env is only the NAME the key rides under into the clean machine.
+# The node's overlay may carry its own fall_through block, which answers first.
+fall_through:
+  checks: [C13, C14]
+  secret_ref: llm.openrouter.api_key
+  key_env: ONEX_CHECK_FALLTHROUGH_KEY
 # The tick publishes the run record on the result topic under the runtime's broker login.
 broker_acl_grants:
   - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"

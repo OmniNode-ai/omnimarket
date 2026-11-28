@@ -29,6 +29,12 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delega
 )
 
 
+@pytest.fixture(autouse=True)
+def _leg_off_unless_a_test_turns_it_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests grade the tick without the fall-through leg; the contract's declared setting is switched off here."""
+    monkeypatch.setattr(tick, "contract_fall_through", lambda: None)
+
+
 def _overlays(tmp: Path, checks: list[str]) -> dict[str, str]:
     probe = tmp / "probe.yaml"
     probe.write_text(
@@ -257,3 +263,18 @@ def test_evidence_keeps_the_detail_of_every_failed_clause() -> None:
     evidence = tick.evidence_for(result)
     assert evidence["failed_clauses"] == ["zero_provider"]
     assert evidence["failed_clause_details"] == {"zero_provider": why}
+
+
+def test_with_the_contract_setting_on_and_no_resolvable_key_the_run_reads_the_credential_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe import (
+        contract_fall_through,
+    )
+
+    monkeypatch.setattr(tick, "contract_fall_through", contract_fall_through)
+    monkeypatch.setattr(tick, "_resolve_secret", lambda _ref: None)
+    _, pub = _run(tmp_path, monkeypatch, "--check", "C13")
+    payload = pub.events[0]["payload"]
+    assert payload["verdict"] == "PRECONDITION-ABSENT"
+    assert "openrouter_credential" in json.dumps(payload)

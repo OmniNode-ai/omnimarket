@@ -17,7 +17,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -72,6 +72,15 @@ PASSTHROUGH_ENV = (
 INSTALL_TIMEOUT_S = 900
 DRIVER_TIMEOUT_S = 900
 SOURCE_TIMEOUT_S = 60
+
+
+@dataclass(frozen=True)
+class FallThroughKey:
+    """The declared credential path of the fall-through leg: the NAME the key rides under, and how to read its value."""
+
+    env_name: str
+    secret_ref: str
+    resolve: Callable[[], str | None]
 
 
 @dataclass(frozen=True)
@@ -235,8 +244,10 @@ class CleanInstallCustomerMachine:
         uv: str | None = None,
         host_path: str | None = None,
         host_env: Mapping[str, str] | None = None,
+        fall_through_key: FallThroughKey | None = None,
     ) -> None:
         self._sources = sources
+        self._fall_through_key = fall_through_key
         self._runner = runner or SubprocessCommandHandler()
         self._uv = uv
         self._host_path = host_path
@@ -258,6 +269,81 @@ class CleanInstallCustomerMachine:
         return ModelDelegateObservation(
             **{k: v for k, v in record.items() if k in fields},
             runner_entry_path=runner_entry,
+        )
+
+    def run_fall_through(
+        self, check_id: CheckId, resolution: ModelChainResolution
+    ) -> ModelDelegateObservation:
+        """One ``onex delegate`` on a clean profile whose local rungs are declared unreachable for this run only.
+
+        The key is read through the declared secret reference and enters the clean machine under the declared variable name;
+        the driver stores it with the install's own ``onex secret set`` and drops it from the delegate's environment. No value
+        is returned, logged or written to a record.
+        """
+        if self._fall_through_key is None:
+            raise CollectorAbsentError(
+                "fall_through_setting",
+                "the overlay declares no fall_through setting, so no credential path is known",
+            )
+        value = self._fall_through_key.resolve()
+        if not value:
+            raise CollectorAbsentError(
+                "openrouter_credential",
+                "the declared secret reference resolves to no value on this host",
+            )
+        guide_name, guide_text = self._sources.guide()
+        lines = install_lines(guide_text)
+        usable = lines[0] if len(lines) == 1 else None
+        if usable is None or usable.argv is None:
+            raise CollectorAbsentError(
+                "install_line",
+                f"{guide_name} carries no single runnable install line for the fall-through run",
+            )
+        uv = self._find_uv()
+        with tempfile.TemporaryDirectory(prefix="c13-fall-") as tmp:
+            root = Path(tmp)
+            env = self._clean_env(root, uv)
+            if shutil.which("onex", path=env["PATH"]):
+                raise CollectorAbsentError(
+                    "clean_machine", "an onex already resolves on the clean PATH"
+                )
+            install = self._runner.run(
+                usable.argv, env=env, cwd=root, timeout_s=INSTALL_TIMEOUT_S
+            )
+            if install.rc != 0:
+                return ModelDelegateObservation(
+                    rc=install.rc if install.rc is not None else -1
+                )
+            python = root / "tool" / (usable.package or "") / "bin" / "python"
+            drove = self._runner.run(
+                [
+                    str(python),
+                    "-",
+                    "--onex",
+                    str(root / "bin" / "onex"),
+                    "--fall-through",
+                    "--key-env",
+                    self._fall_through_key.env_name,
+                    "--secret-ref",
+                    self._fall_through_key.secret_ref,
+                ],
+                env={**env, self._fall_through_key.env_name: value},
+                cwd=root,
+                timeout_s=DRIVER_TIMEOUT_S,
+                stdin=Path(clean_delegation_driver.__file__).read_text(
+                    encoding="utf-8"
+                ),
+            )
+        try:
+            document: dict[str, Any] = json.loads(drove.stdout)
+        except ValueError as exc:
+            raise CollectorAbsentError(
+                "clean_delegation_driver",
+                f"the in-machine driver produced no record (rc {drove.rc}): {drove.stderr.strip().replace(value, '***')[-500:]} ({exc})",
+            ) from exc
+        fields = set(ModelDelegateObservation.model_fields)
+        return ModelDelegateObservation(
+            **{k: v for k, v in document.items() if k in fields}
         )
 
     def collect_routing(

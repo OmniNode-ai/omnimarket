@@ -146,8 +146,11 @@ class _FallThroughMachine(InMemoryCustomerMachine):
         return self._fall
 
 
-def _handler(machine: Any) -> HandlerDelegationCheckProbe:
+def _handler(
+    machine: Any, fall_through_checks: Any = ("C13", "C14")
+) -> HandlerDelegationCheckProbe:
     return HandlerDelegationCheckProbe(
+        fall_through_checks=fall_through_checks,
         responders=CHAIN,
         reader=InMemoryResponderReader({BASE: READING}),
         machine=machine,
@@ -200,3 +203,71 @@ def test_a_machine_with_no_fall_through_collector_claims_no_clause_of_the_leg() 
     )
     assert not [c for c in result.clauses if c.name.startswith("fall_through")]
     assert result.fall_through_attempts == ()
+
+
+@pytest.mark.parametrize("check_id", ["C13", "C14"])
+def test_with_no_declared_setting_the_leg_is_off_and_no_task_is_sent(
+    check_id: Any,
+) -> None:
+    machine = _FallThroughMachine(_observation(("local", "openrouter"), "openrouter"))
+    result = _handler(machine, fall_through_checks=()).handle(
+        ModelDelegationCheckRequest(
+            check_id=check_id, trigger="schedule", correlation_id="t"
+        )
+    )
+    assert machine.sent == []
+    assert not [c for c in result.clauses if c.name.startswith("fall_through")]
+
+
+def test_a_check_the_setting_does_not_name_gets_no_leg() -> None:
+    machine = _FallThroughMachine(_observation(("local", "openrouter"), "openrouter"))
+    _handler(machine, fall_through_checks=("C13",)).handle(
+        ModelDelegationCheckRequest(
+            check_id="C14", trigger="schedule", correlation_id="t"
+        )
+    )
+    assert machine.sent == []
+
+
+def test_the_nodes_contract_declares_the_setting_that_turns_the_leg_on() -> None:
+    from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe import (
+        contract_fall_through,
+    )
+
+    declared = contract_fall_through()
+    assert declared is not None
+    assert declared.checks == ("C13", "C14")
+    assert declared.secret_ref == "llm.openrouter.api_key"
+
+
+def test_an_overlay_block_answers_before_the_contract_declaration() -> None:
+    from omnimarket.models.overlay_documents.model_delegation_check_probe_overlay import (
+        ModelDelegationCheckProbeOverlay,
+        ModelFallThroughSettings,
+    )
+    from omnimarket.nodes.node_delegation_check_probe_effect import (
+        runtime_delegation_check_probe_tick as tick,
+    )
+
+    base = {
+        "checks": ["C13"],
+        "history_file": "h.jsonl",
+        "history_keep": 1,
+        "result_topic": "t",
+        "responder_timeout_s": 1,
+    }
+    own = ModelFallThroughSettings(
+        checks=("C14",), secret_ref="llm.x.api_key", key_env="K_ENV"
+    )
+    with_block = ModelDelegationCheckProbeOverlay.model_validate(
+        {**base, "fall_through": own.model_dump()}
+    )
+    assert tick._fall_through_setting(with_block) == own
+    declared = tick._fall_through_setting(
+        ModelDelegationCheckProbeOverlay.model_validate(base)
+    )
+    assert declared is not None
+    assert declared.checks == ("C13", "C14")
+    key = tick._fall_through_key(with_block)
+    assert key is not None
+    assert key.secret_ref == "llm.x.api_key"
