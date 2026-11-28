@@ -81,3 +81,16 @@ post_policy:
       dedup_key: "{kind}:{subject}"
       reminder_hours: 24
       post_resolved: false
+    - kind: runner_fleet_canary_fail
+      match: 'RUNNER FLEET CANARY — FAIL'
+      alarm_class: page
+      dedup_key: "{kind}"
+      reminder_hours: 24
+      post_resolved: true
+      action: re-register the lost runners or bring the offline ones back
+    - kind: runner_fleet_canary_warn
+      match: 'RUNNER FLEET CANARY — WARN'
+      alarm_class: quiet
+      dedup_key: "{kind}"
+      reminder_hours: 24
+      post_resolved: false

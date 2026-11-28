@@ -200,3 +200,24 @@ def test_page_kind_without_an_action_is_refused() -> None:
     doc["post_policy"]["kinds"][0]["action"] = ""
     with pytest.raises(ValueError, match="names no action"):
         ModelAlarmPostPolicy.model_validate(doc["post_policy"])
+
+
+_CANARY = (
+    "*[RUNNER FLEET CANARY — {sev}]* {n} runner registration(s) LOST (registered={r}/20) "
+    "(expected=20 online={r} offline=0 offline_but_busy=0 offline_idle=0 missing={n}). Offline: none."
+)
+
+
+def test_runner_fleet_canary_fail_posts_once_while_the_count_moves() -> None:
+    rig = _Rig()
+    for n in (2, 3, 4, 5):
+        rig.send(_CANARY.format(sev="FAIL", n=n, r=20 - n))
+        rig.clock.now += timedelta(minutes=10)
+    assert len(rig.posts) == 1
+
+
+def test_runner_fleet_canary_warn_is_a_reading() -> None:
+    rig = _Rig()
+    rig.send(_CANARY.format(sev="WARN", n=1, r=19))
+    assert rig.posts == []
+    assert rig.readings == [("runner_fleet_canary_warn", "quiet")]
