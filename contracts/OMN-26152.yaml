@@ -53,6 +53,11 @@ requirements:
     acceptance:
       - id: AC13
         statement: "AC13: the retention gate's contract_schedule parse, about 10.6 percent of the shared dev runtime's CPU samples (a YAML parse on every runtime tick), parses an unchanged contract once through a bounded cache keyed by path and content hash, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_retention_cleanup/test_contract_schedule_cache_omn26152.py -q -n 0 --no-cov -p no:cacheprovider` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-closer-git-once-per-clone
+    statement: The ticket closer reads each repository clone once per run and caps its git processes, instead of running git processes per ticket per clone.
+    acceptance:
+      - id: AC14
+        statement: "AC14: the ticket closer's merge reader, 53 percent of the shared dev runtime's CPU in git children (97 git processes in 40 s), runs one git log per clone for a whole run, answers every id equal to the per-ticket reading, and caps the git processes of a run, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_contract_candidate_source.py -q -n 0 --no-cov -p no:cacheprovider` passes at the unfixed base or fails at the fixed head"
 evidence_requirements:
   - kind: tests
     description: Writer golden chain including the narrow-path regression tests.
@@ -166,6 +171,7 @@ dod_evidence:
   - id: dod-omn26152-closer-git-once-per-clone
     description: "The ticket closer's merge reader runs one git log per clone for a whole run, answers every id from an in-memory map equal to the per-ticket reading, and caps the git processes of a run; the new tests are absent at the merge base so the check fails there (must-fail control)."
     source: manual
+    binds_ac: [AC14]
     checks:
       - check_type: test_passes
         check_value: >-

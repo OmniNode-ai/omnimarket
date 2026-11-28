@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
+from omnimarket.models.closeout_scope_overlay import ModelCloseoutScopeOverlay
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_contract_index import (
     InMemoryContractIndex,
 )
@@ -213,7 +214,7 @@ def test_the_git_merge_reader_finds_the_newest_squash_merge_naming_the_ticket(
 
 
 def _legacy_merge(
-    reader_home: Path, overlay: object, ticket_id: str
+    reader_home: Path, overlay: ModelCloseoutScopeOverlay, ticket_id: str
 ) -> tuple[str, str] | None:
     """The per-ticket reading the closer ran before OMN-26152: a ``git log -1 --grep``
     per ticket per clone. Kept here as the reference the batched reader must equal."""
@@ -225,13 +226,19 @@ def _legacy_merge(
 
     grep = f"(^|[^0-9]){re.escape(ticket_id)}([^0-9]|$)"
     newest: tuple[int, str, Path] | None = None
-    for repository in overlay.pr_repositories:  # type: ignore[attr-defined]
+    for repository in overlay.pr_repositories:
         clone = clone_path(reader_home, repository)
         ref = f"origin/{repository.default_branch}"
         out = _git(
-            clone, "log", ref, "-1", "--extended-regexp", "--grep", grep,
+            clone,
+            "log",
+            ref,
+            "-1",
+            "--extended-regexp",
+            "--grep",
+            grep,
             "--format=%H%x09%ct",
-        )  # fmt: skip
+        )
         for line in out.splitlines():
             sha, _, stamp = line.partition("\t")
             when = int(stamp)
@@ -240,7 +247,7 @@ def _legacy_merge(
     return None if newest is None else (str(newest[2]), newest[1])
 
 
-def _fixture_registry(tmp_path: Path) -> tuple[Path, object]:
+def _fixture_registry(tmp_path: Path) -> tuple[Path, ModelCloseoutScopeOverlay]:
     home = tmp_path / "registry"
     overlay_all = load_scope_overlay()
     repos = tuple(
