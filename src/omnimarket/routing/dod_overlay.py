@@ -127,6 +127,8 @@ _ENV_DSN = "OMNIDASH_ANALYTICS_DB_URL"
 _ENV_VERDICT_DSN = "OMNINODE_INTERNAL_DB_URL"
 
 _CONNECT_TIMEOUT_SECONDS = 3
+# OMN-26152: bound on the held (task type, tenant) joins of one reader.
+_HELD_JOIN_LIMIT = 64
 
 #: The eval line verdict (``omnimarket.ranges``) under which routing may learn.
 EVAL_LINE_MET = "met"
@@ -622,6 +624,25 @@ class PostgresDodOutcomeReader:
             "AND tenant_id = %(tenant_id)s::uuid "
             "AND lower(correlation_id::text) = ANY(%(run_ids)s)"
         )
+        # OMN-26152: the join is held per (task type, tenant) and re-read only
+        # when a cheap revision probe of either source moves, because the
+        # routing consumers read it once per delegation and the unchanged
+        # answer was being fetched, built into dicts and joined every time.
+        self._verdict_revision_sql = (
+            "SELECT count(*) AS rev_count, max(completed_at) AS rev_newest, "
+            "count(completed_at) AS rev_decided "
+            f"FROM {verdict_relation} "
+            "WHERE delegation_correlation_id IS NOT NULL"
+        )
+        self._delegation_revision_sql = (
+            "SELECT count(*) AS rev_count, max(created_at) AS rev_newest "
+            f"FROM {delegation_relation} "
+            "WHERE task_type = %(task_type)s "
+            "AND tenant_id = %(tenant_id)s::uuid"
+        )
+        self._held: dict[
+            tuple[str, str], tuple[tuple[object, ...], list[dict[str, object]]]
+        ] = {}
         self._conns: dict[str, psycopg2.extensions.connection] = {}
 
     def _get_conn(self, dsn: str) -> psycopg2.extensions.connection:
@@ -638,20 +659,27 @@ class PostgresDodOutcomeReader:
     def read_dod_outcomes(
         self, *, task_type: str, tenant_id: str
     ) -> list[dict[str, object]]:
+        """The join for one task type and tenant, held while its sources are unchanged.
+
+        A revision probe (row count and newest timestamp of each source) is
+        compared with the one the held answer was read under; equal means the
+        held rows are returned without a fetch, a dict build or a join. Any
+        change in either source reads the join fresh, so the answer equals a
+        fresh read.
+        """
         import psycopg2.extras  # type: ignore[import-untyped]
 
         verdict_conn = self._get_conn(self._verdict_dsn)
         with verdict_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(self._verdict_sql)
-            verdicts = [dict(row) for row in cur.fetchall()]
-        run_ids = sorted(
-            {
-                str(v["delegation_correlation_id"]).strip().lower()
-                for v in verdicts
-                if v.get("delegation_correlation_id")
-            }
+            cur.execute(self._verdict_revision_sql)
+            probe = cur.fetchone() or {}
+        verdict_revision = (
+            probe.get("rev_count"),
+            probe.get("rev_newest"),
+            probe.get("rev_decided"),
         )
-        if not run_ids:
+        if not probe.get("rev_count"):
+            self._held.pop((task_type, tenant_id), None)
             return []
 
         conn = self._get_conn(self._delegation_dsn)
@@ -659,14 +687,30 @@ class PostgresDodOutcomeReader:
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute("SELECT set_config(%s, %s, true)", (TENANT_GUC, tenant_id))
-                cur.execute(
-                    self._delegation_sql,
-                    {
-                        "task_type": task_type,
-                        "tenant_id": tenant_id,
-                        "run_ids": run_ids,
-                    },
+                params = {"task_type": task_type, "tenant_id": tenant_id}
+                cur.execute(self._delegation_revision_sql, params)
+                dprobe = cur.fetchone() or {}
+                revision = (
+                    *verdict_revision,
+                    dprobe.get("rev_count"),
+                    dprobe.get("rev_newest"),
                 )
+                held = self._held.get((task_type, tenant_id))
+                if held is not None and held[0] == revision:
+                    conn.commit()
+                    return [dict(row) for row in held[1]]
+                verdicts = self._read_verdicts(verdict_conn)
+                run_ids = sorted(
+                    {
+                        str(v["delegation_correlation_id"]).strip().lower()
+                        for v in verdicts
+                        if v.get("delegation_correlation_id")
+                    }
+                )
+                if not run_ids:
+                    conn.commit()
+                    return []
+                cur.execute(self._delegation_sql, {**params, "run_ids": run_ids})
                 delegations = [dict(row) for row in cur.fetchall()]
             conn.commit()
         except BaseException:
@@ -674,7 +718,20 @@ class PostgresDodOutcomeReader:
             raise
         finally:
             conn.autocommit = True
-        return join_delegations_to_verdicts(delegations, verdicts)
+        joined = join_delegations_to_verdicts(delegations, verdicts)
+        if len(self._held) >= _HELD_JOIN_LIMIT:
+            self._held.pop(next(iter(self._held)))
+        self._held[(task_type, tenant_id)] = (revision, joined)
+        return [dict(row) for row in joined]
+
+    def _read_verdicts(
+        self, verdict_conn: psycopg2.extensions.connection
+    ) -> list[dict[str, object]]:
+        import psycopg2.extras
+
+        with verdict_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(self._verdict_sql)
+            return [dict(row) for row in cur.fetchall()]
 
     def close(self) -> None:
         for conn in self._conns.values():
