@@ -121,3 +121,55 @@ def test_verifier_leaves_other_commands_without_a_lane(
     }
     ok, message = EvidenceCollector()._run_command_check(check, "OMN-26725")
     assert ok, message
+
+
+def _fake_onex_expecting_workspace(tmp_path: Path) -> Path:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    script = bin_dir / "onex"
+    script.write_text(
+        '#!/bin/sh\ntest "$OMNIBASE_PATH" = "$EXPECTED_ROOT"\n', encoding="utf-8"
+    )
+    script.chmod(script.stat().st_mode | stat.S_IXUSR)
+    return bin_dir
+
+
+_BUS_LANE_CHECK = {
+    "check_type": "command",
+    "check_value": "onex lab-work run --bus-lane dev --repo OmniNode-ai/omnimarket --kind test -- true",
+}
+
+
+def test_verifier_declares_the_workspace_root_to_a_lab_work_item(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-26771: no OMNIBASE_PATH in the parent; the declared fallback is OMNI_HOME."""
+    bin_dir = _fake_onex_expecting_workspace(tmp_path)
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    monkeypatch.delenv("OMNIBASE_PATH", raising=False)
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    monkeypatch.setenv("EXPECTED_ROOT", str(tmp_path))
+    ok, message = EvidenceCollector()._run_command_check(_BUS_LANE_CHECK, "OMN-26771")
+    assert ok, message
+
+
+def test_verifier_keeps_a_workspace_root_the_caller_already_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bin_dir = _fake_onex_expecting_workspace(tmp_path)
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    monkeypatch.setenv("OMNIBASE_PATH", "/declared/root")
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    monkeypatch.setenv("EXPECTED_ROOT", "/declared/root")
+    ok, message = EvidenceCollector()._run_command_check(_BUS_LANE_CHECK, "OMN-26771")
+    assert ok, message
+
+
+def test_verifier_sets_no_workspace_root_for_other_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OMNIBASE_PATH", raising=False)
+    monkeypatch.setenv("OMNI_HOME", "/somewhere")
+    check = {"check_type": "command", "check_value": 'test -z "$OMNIBASE_PATH"'}
+    ok, message = EvidenceCollector()._run_command_check(check, "OMN-26771")
+    assert ok, message
