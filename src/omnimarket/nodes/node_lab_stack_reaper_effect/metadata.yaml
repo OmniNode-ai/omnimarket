@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_stack_reaper_effect
+version: 0.1.0
+description: >
+  Lease-based reaper for lab compose stacks and labelled harness containers on a lab host: a stack
+  is removed only when it was explicitly leased and every claim that owns it is closed in the
+  ledger. Dry run by default; each pass appends its evidence to the ledger.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_lab_stack_reaper_effect: omnimarket.nodes.node_lab_stack_reaper_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: true
+  side_effect_class: destructive
+dependencies:
+- PyYAML>=6.0.3
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+- docker
+pack: operator_tooling
+display_name: Lab Stack Reaper Effect
+node_role: effect

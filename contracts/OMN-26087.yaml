@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-26087
+title: Port the lab stack reaper effect node into omnimarket with its tests
+summary: The lease-based lab stack reaper is hosted in omnimarket as node_lab_stack_reaper_effect with a command line entry, its shared helpers copied as a slice into the node, the shared claim index reused, and its tests ported.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26087-lab-stack-reaper-node
+  statement: The lab stack reaper node and its ported tests exist in omnimarket and pass, with ruff and mypy --strict clean on the touched files.
+  acceptance:
+  - id: AC1
+    statement: "AC1: src/omnimarket/nodes/node_lab_stack_reaper_effect exists with contract, metadata, handlers and models, and the tests under tests/nodes/node_lab_stack_reaper_effect pass -- falsifier: uv run pytest on that directory fails or collects zero tests"
+  - id: AC2
+    statement: "AC2: ruff check, ruff format --check and mypy --strict are clean on the node directory and its tests -- falsifier: any of the three exits non-zero"
+evidence_requirements:
+- kind: tests
+  description: The ported reaper tests, the golden chain over the packaged contract, and the snapshot script and writer lock tests.
+  command: uv run pytest tests/nodes/node_lab_stack_reaper_effect -q -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26087-ac1-tests
+  description: The lab stack reaper node tests pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_stack_reaper_effect -q -p no:cacheprovider
+    cwd: .
+- id: dod-omn26087-ac2-lint-types
+  description: ruff and mypy --strict are clean on the node and its tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: uv run ruff check src/omnimarket/nodes/node_lab_stack_reaper_effect tests/nodes/node_lab_stack_reaper_effect && uv run ruff format --check src/omnimarket/nodes/node_lab_stack_reaper_effect tests/nodes/node_lab_stack_reaper_effect && uv run mypy src/omnimarket/nodes/node_lab_stack_reaper_effect --strict
+    cwd: .
+- id: dod-omn26087-integration-proof
+  description: The local Done gate runs the node's tests on a lab host at the pushed head; no criterion binds to it, the focused tests above bind the criteria.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26087 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_stack_reaper_effect -q --no-cov -p no:cacheprovider
+    cwd: .
