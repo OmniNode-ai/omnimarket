@@ -12,6 +12,8 @@ requirements:
   - id: req-omn26733-bump-red-fixed-at-source
     statement: Each red check on the post-release bump is fixed at its source or named as a base red with its commit and job.
     acceptance:
+      - id: AC1
+        statement: "AC1: omnimarket#6997 (or its replacement) is green at its head and merged, and origin/dev pyproject.toml reads a version greater than the newest v* tag -- falsifier: git -C omnimarket show origin/dev:pyproject.toml | grep -m1 '^version' reads 0.4.329"
       - id: AC2
         statement: "AC2: each red check on the bump is fixed at its source or named as a base red with its commit and job -- falsifier: a red check on the bump with no fix and no named cause"
 evidence_requirements:
@@ -30,4 +32,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/cli/test_onex_cli_help_table_omn26615.py -q --no-cov
+        cwd: .
+  - id: dod-omn26733-dev-ahead-of-tag
+    description: "dev pyproject.toml reads a version above v0.4.329 (it reads 0.4.330 after omnimarket#6997 merged), and a version equal to the release is refused by the same decision."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_omn26733_dev_ahead_of_v0_4_329.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26733-release-identity-passes-on-src
+    description: "The check-release-identity hook passes on a src/ file at this head, which dev can only do once its version is above the newest tag."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: uv run pre-commit run check-release-identity --files src/omnimarket/__init__.py
         cwd: .
