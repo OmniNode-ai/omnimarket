@@ -887,11 +887,83 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
-    environment:
+    environment: &probe_tick_environment
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
     evidence_file: .local/state/omni/c32-auth-boundary-probe/last-run.json
     state_directory: .onex_state/c32-auth-boundary-probe
+  # The C30 Claude Code plugin delegation probe (node_c30_claude_code_plugin_probe_effect, OMN-19966), once a day on a Linux lab
+  # host: a systemd user service and timer. One run installs the published onex plugin into a scratch Claude Code profile, drives
+  # /onex:delegate from it, finds the receipt, reads the run back from the served dashboard and publishes the run on the node's
+  # result topic, where the launch reading (M1) reads C30. The profile and the history size are the node's overlay, found
+  # under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them. The subscription token the probe
+  # checks for by presence is read from the unit's environment file, placed on the host by its operator and never by this contract.
+  c30-claude-code-plugin-probe:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-c30-claude-code-plugin-probe
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 86400
+      # The node's own timeout_ms is 3900000 (its contract); the unit ends a hung run at 3960 s and exits 124.
+      run_timeout_s: 3960
+      run_at_load: true
+      description: every 86400 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_c30_claude_code_plugin_probe_effect.runtime_c30_probe_tick
+    entry_file: src/omnimarket/nodes/node_c30_claude_code_plugin_probe_effect/runtime_c30_probe_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_file: .config/onex/c30-claude-code-plugin-probe.env
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment: *probe_tick_environment
+    evidence_file: .local/state/omni/c30-claude-code-plugin-probe/last-run.json
+    state_directory: .onex_state/c30-claude-code-plugin-probe
+  # The C31 local dashboard parity probe (node_c31_local_dashboard_parity_probe_effect, OMN-19966), once a day on a Linux lab host:
+  # a systemd user service and timer. One run seeds a measured fixture delegation in a scratch HOME, starts the real `onex dashboard`
+  # there, reads the served Runs exposure and Overview's savings figure with the session bearer token and compares them with
+  # `onex metering --json`, then publishes the run on the node's result topic, where the launch reading (M1) reads C31. The profile
+  # and the history size are the node's overlay, found under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
+  c31-local-dashboard-parity-probe:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-c31-local-dashboard-parity-probe
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 86400
+      # The node's own timeout_ms is 1200000 (its contract); the unit ends a hung run at 1260 s and exits 124.
+      run_timeout_s: 1260
+      run_at_load: true
+      description: every 86400 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_c31_local_dashboard_parity_probe_effect.runtime_c31_probe_tick
+    entry_file: src/omnimarket/nodes/node_c31_local_dashboard_parity_probe_effect/runtime_c31_probe_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment: *probe_tick_environment
+    evidence_file: .local/state/omni/c31-local-dashboard-parity-probe/last-run.json
+    state_directory: .onex_state/c31-local-dashboard-parity-probe
   # The delegation checks C13, C14 and C17 (node_delegation_check_probe_effect, OMN-26043), once an hour on a Linux lab host: a
   # systemd user service and timer. One run sends each check's task through the responder row of the settings store (local
   # least busy, then openrouter, then claude_api) and publishes each run on the node's result topic, where the beta board reads
