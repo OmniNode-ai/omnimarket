@@ -596,7 +596,7 @@ def test_dashboard_observation_rejects_changed_current_tenant(
 
 @pytest.mark.release_proof
 def test_customer_launchers_only(tmp_path: Path) -> None:
-    """AC2: `uv tool install omninode-onex` puts exactly onex and omni-agent on PATH.
+    """AC2: `uv tool install omninode-onex` puts exactly onex on PATH.
 
     Opt in with ONEX_TEST_ONEX_WHEEL (the built omninode-onex wheel); the
     distributions it pins resolve from PyPI. The control installs omnibase-core
@@ -644,7 +644,7 @@ def test_customer_launchers_only(tmp_path: Path) -> None:
 
     version = wheel.name.split("-")[1]
     launchers, bin_dir = install(f"omninode-onex=={version}", "customer")
-    assert launchers == {"onex", "omni-agent"}, launchers
+    assert launchers == {"onex"}, launchers
     ran = _run(
         [str(bin_dir / "onex"), "--version"],
         {
@@ -669,7 +669,7 @@ def test_customer_launchers_only(tmp_path: Path) -> None:
     assert listed.returncode == 0, listed.stdout + listed.stderr
 
     control, _ = install("omnibase-core", "control")
-    assert control > {"onex", "omni-agent"}, control
+    assert control > {"onex"}, control
 
 
 GUIDE_INSTALL_LINE: tuple[str, ...] = (
@@ -914,7 +914,8 @@ def test_no_git_install(tmp_path: Path) -> None:
 
 
 CUSTOMER_PACKAGE = "omninode-onex"
-CUSTOMER_LAUNCHERS = frozenset({"onex", "omni-agent"})
+CUSTOMER_LAUNCHERS = frozenset({"onex"})
+HIDDEN_LAUNCHERS = frozenset({"omni-agent"})
 LAUNCHER_TARGET = "omnibase_core.cli.cli_commands:cli"
 
 
@@ -933,10 +934,12 @@ def _venv_python(venv: Path) -> str:
 
 
 def _launcher_owners(site: Path) -> dict[str, list[tuple[str, str]]]:
-    """Every installed distribution that declares onex or omni-agent, with its target."""
+    """Every installed distribution that declares onex or a hidden launcher, with its target."""
     from importlib import metadata as importlib_metadata
 
-    owners: dict[str, list[tuple[str, str]]] = {name: [] for name in CUSTOMER_LAUNCHERS}
+    owners: dict[str, list[tuple[str, str]]] = {
+        name: [] for name in CUSTOMER_LAUNCHERS | HIDDEN_LAUNCHERS
+    }
     from packaging.utils import canonicalize_name
 
     for dist in importlib_metadata.distributions(path=[str(site)]):
@@ -966,6 +969,14 @@ def _assert_one_owner(owners: dict[str, list[tuple[str, str]]]) -> None:
         assert owners.get(name) == [(CUSTOMER_PACKAGE, LAUNCHER_TARGET)], (
             f"{name} is declared by {owners.get(name)}; AC3's one-owner rule wants exactly "
             f"{CUSTOMER_PACKAGE} with {LAUNCHER_TARGET}"
+        )
+
+
+def _assert_no_hidden_launcher(owners: dict[str, list[tuple[str, str]]]) -> None:
+    for name in sorted(HIDDEN_LAUNCHERS):
+        assert not owners.get(name), (
+            f"{name} is declared by {owners.get(name)}; the customer install exposes only "
+            f"{sorted(CUSTOMER_LAUNCHERS)}"
         )
 
 
@@ -1252,6 +1263,23 @@ def test_one_package_uv_and_pipx_one_owner_rule(
             _assert_one_owner(_launcher_owners(site))
     else:
         _assert_one_owner(_launcher_owners(site))
+
+
+def test_one_package_uv_and_pipx_hidden_launcher_is_caught(tmp_path: Path) -> None:
+    """AC3 control: a distribution that still declares omni-agent fails; onex alone passes."""
+    clean = tmp_path / "clean"
+    clean.mkdir()
+    _fake_dist(clean, CUSTOMER_PACKAGE, {"onex": LAUNCHER_TARGET})
+    _assert_no_hidden_launcher(_launcher_owners(clean))
+    leaked = tmp_path / "leaked"
+    leaked.mkdir()
+    _fake_dist(
+        leaked,
+        CUSTOMER_PACKAGE,
+        {"onex": LAUNCHER_TARGET, "omni-agent": LAUNCHER_TARGET},
+    )
+    with pytest.raises(AssertionError, match="exposes only"):
+        _assert_no_hidden_launcher(_launcher_owners(leaked))
 
 
 def test_one_package_uv_and_pipx_no_code_and_exact_pins(tmp_path: Path) -> None:
@@ -1569,7 +1597,7 @@ def _ci_curl_bash(
 
 @pytest.mark.release_proof
 def test_curl_installer_same_release(tmp_path: Path) -> None:
-    """AC4: the candidate's script, fetched over HTTP from a local stand-in for our domain and piped into bash in an empty HOME with no uv on PATH and a git stub, installs the pinned uv after its sha256 matches, runs the guide's install line with --no-build, never calls git and leaves exactly onex and omni-agent in uv's bin directory. Until omninode-onex is published, the candidate wheel comes from ONEX_TEST_ONEX_WHEEL through the installer's find-links variable while every other distribution comes from PyPI. Not covered here: installed content checked against the release manifest, which exists only at release."""
+    """AC4: the candidate's script, fetched over HTTP from a local stand-in for our domain and piped into bash in an empty HOME with no uv on PATH and a git stub, installs the pinned uv after its sha256 matches, runs the guide's install line with --no-build, never calls git and leaves exactly onex in uv's bin directory. Until omninode-onex is published, the candidate wheel comes from ONEX_TEST_ONEX_WHEEL through the installer's find-links variable while every other distribution comes from PyPI. Not covered here: installed content checked against the release manifest, which exists only at release."""
     wheel_env = os.environ.get("ONEX_TEST_ONEX_WHEEL")
     if wheel_env is None:
         if os.environ.get("ONEX_E2E_REQUIRE_COMPLETE") == "1":

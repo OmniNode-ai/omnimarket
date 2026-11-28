@@ -203,6 +203,17 @@ dod_evidence:
         check_value: >-
           sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k one_package_uv_and_pipx'
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-hidden-launcher-control
+    description: >-
+      The one-owner checks treat omni-agent as a launcher the customer install must not expose: a distribution that declares it beside onex fails the hidden-launcher control, and onex alone passes. Runs without a wheel.
+    source: manual
+    binds_ac:
+      - AC3
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: uv run pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k hidden_launcher_is_caught
+        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn25070-installer-matches-manifest
     description: >-
       The candidate check against the curl installer rendered from packages/omninode-onex/installer.json: the
