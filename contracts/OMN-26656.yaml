@@ -39,8 +39,6 @@ requirements:
     statement: 'AC3: the receipt of a code answer names each class check and the contract check with its verdict -- falsifier: a receipt that shows only the contract check'
   - id: AC4
     statement: 'AC4: a count over the last 7 days of recorded runs says how many accepted code answers were governed by a response contract and how many were untested -- falsifier: no count, or one with no source named'
-  - id: AC5
-    statement: 'AC5: an own-key session whose chosen provider answers 429, answers 503 or is unreachable ends failed on that provider and never calls another provider with the customer''s key -- falsifier: a provider other than the chosen one receives a call in such a session'
 evidence_requirements:
 - kind: tests
   description: The focused tests, each failing against the replaced check set first and passing on the fix.
@@ -211,3 +209,17 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_response_contract_adds_code_checks_omn26656.py -q --no-cov -n 0 -p no:randomly -k "seven_day"
     cwd: .
+- id: dod-omn26656-retire-deleted-ac5
+  description: The live ticket no longer carries AC5, so the claim dod-omn26656-own-key-never-leaves-provider is retired as no longer applicable; that item still runs its own tests. This item binds no criterion and its check keeps the own-key test file present.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: test -s tests/chains/local/test_chain_l12_own_key_never_leaves_provider_omn26656.py
+    cwd: .
+  supersedes_ac_binding:
+  - item: dod-omn26656-own-key-never-leaves-provider
+    label: AC5
+    reason_kind: no_longer_applicable
+    reason: The live ticket OMN-26656 no longer carries AC5 (read 2026-11-28T03:15Z), so the claim has no criterion to bind. dod-omn26656-own-key-never-leaves-provider still runs its own tests.
+    retired_by: q-close26656-0312
+    retired_at: '2026-11-28T03:30:00Z'
