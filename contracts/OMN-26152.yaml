@@ -176,3 +176,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: >-
           uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -q --no-cov
+  - id: dod-omn26152-ac14-late-rows
+    description: "A row that reaches the store after a newer row (another lane's late append) is merged into the held window in store order, not rebuilt; the test fails at the base where a late row forces a full rebuild (must-fail control)."
+    source: manual
+    binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -k late_rows_older -q --no-cov

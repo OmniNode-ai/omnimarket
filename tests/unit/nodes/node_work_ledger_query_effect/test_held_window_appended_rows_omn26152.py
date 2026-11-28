@@ -98,13 +98,35 @@ def test_appended_rows_are_parsed_alone_and_answer_equals_full_rebuild(
     _same(after, fresh)
 
 
-def test_a_late_row_older_than_the_held_tail_falls_back_to_a_full_rebuild() -> None:
+def test_late_rows_older_than_the_held_tail_are_merged_not_rebuilt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rows from 30 lanes reach the store out of row_ts order, so a late row is the common case."""
     clock = _Clock()
     reader, node = _setup(clock)
-    node.handle(_ask())
-    clock.tick()
-    assert reader.ingest({"row_id": "row-late", "raw_row": _row(5, lane="lane-late")})
-    after = node.handle(_ask())
-    assert after.matched == 13
-    fresh = HandlerWorkLedgerQuery(reader=reader, now=lambda: NOW).handle(_ask())
-    _same(after, fresh)
+    assert node.handle(_ask()).matched == 12
+    parsed: list[int] = []
+    real = replay.parse_rows
+
+    def counting(incoming):  # type: ignore[no-untyped-def]
+        records: tuple[ModelWorkLedgerRowRecord, ...] = tuple(incoming)
+        parsed.append(len(records))
+        return real(records)
+
+    # three requests, each after the watermark moved: a late row, an in-order row, a late row
+    answers = []
+    with monkeypatch.context() as patch:
+        patch.setattr(replay, "parse_rows", counting)
+        for n, minute in enumerate((5, 40, 7)):
+            clock.tick()
+            assert reader.ingest(
+                {"row_id": f"row-late-{n}", "raw_row": _row(minute, lane=f"lane-{n}")}
+            )
+            answers.append(node.handle(_ask()))
+    assert [a.matched for a in answers] == [13, 14, 15]
+    # a rebuild parses the whole window; each moved watermark must parse only its own row
+    assert max(parsed) <= 1
+    _same(
+        answers[-1],
+        HandlerWorkLedgerQuery(reader=reader, now=lambda: NOW).handle(_ask()),
+    )

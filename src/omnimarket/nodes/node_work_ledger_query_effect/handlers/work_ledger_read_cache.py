@@ -93,27 +93,37 @@ class HeldRead:
     ) -> HeldRead | None:
         """This hold with rows projected since appended, or None when a full read is needed.
 
-        Rows already held are skipped by id. None when the new rows are not in store order, or
-        the first of them sorts before the held tail: appending would then differ from a rebuild.
+        Rows already held are skipped by id. New rows that sort before the held tail are merged in
+        store order, so the result equals a rebuild. None only when nothing is held to extend.
         """
         if self.tail_key is None:
             return None
         new = [r for r in records if r.row_id not in self.record_ids]
         keys = [sort_key(r) for r in new]
-        if any(b < a for a, b in pairwise(keys)):
-            return None
+        order = sorted(range(len(new)), key=keys.__getitem__)
+        new = [new[i] for i in order]
+        keys = [keys[i] for i in order]
+        added = sorted(parsed, key=lambda r: sort_key(r.record))
         if keys and keys[0] < self.tail_key:
-            return None
+            # a late row (another lane's row reaches the store after a newer row): merge it in
+            # store order; the held parse is not read again
+            merged = sorted(
+                self.parsed + tuple(added), key=lambda r: sort_key(r.record)
+            )
+            record_ts = sorted(self.record_ts + tuple(r.row_ts for r in new))
+        else:
+            merged = list(self.parsed + tuple(added))
+            record_ts = list(self.record_ts + tuple(r.row_ts for r in new))
         return HeldRead(
             self.since,
             until,
-            self.parsed + tuple(parsed),
-            self.parsed_ts + tuple(r.record.row_ts for r in parsed),
-            self.record_ts + tuple(r.row_ts for r in new),
+            tuple(merged),
+            tuple(r.record.row_ts for r in merged),
+            tuple(record_ts),
             newest_row_ts,
             newest_projected_at,
             self.record_ids | {r.row_id for r in new},
-            keys[-1] if keys else self.tail_key,
+            max(self.tail_key, keys[-1]) if keys else self.tail_key,
         )
 
     @property
